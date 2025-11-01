@@ -1,0 +1,286 @@
+// Main application controller
+class FaceDetectionApp {
+    constructor() {
+        this.faceDetector = new FaceDetector();
+        this.videoManager = new VideoManager();
+        this.currentTab = 'live';
+
+        this.initializeEventListeners();
+        this.loadVideoHistory();
+    }
+
+    initializeEventListeners() {
+        // Tab navigation
+        document.querySelectorAll('.tab-button').forEach(button => {
+            button.addEventListener('click', (e) => {
+                this.switchTab(e.target.dataset.tab);
+            });
+        });
+
+        // Camera controls
+        document.getElementById('startCamera').addEventListener('click', () => {
+            this.faceDetector.startCamera();
+        });
+
+        document.getElementById('stopCamera').addEventListener('click', () => {
+            this.faceDetector.stopCamera();
+        });
+
+        document.getElementById('startTracking').addEventListener('click', () => {
+            this.faceDetector.startTracking();
+            this.videoManager.startRecording();
+        });
+
+        document.getElementById('stopTracking').addEventListener('click', () => {
+            this.faceDetector.stopTracking();
+            this.videoManager.stopRecording().then(videoData => {
+                this.saveSessionData(videoData);
+            }).catch(error => {
+                console.error('Error stopping recording:', error);
+                // Still save session data even if video fails
+                this.saveSessionData({ filename: null });
+            });
+        });
+
+        // Face detection events
+        this.faceDetector.onFaceCountUpdate = (count) => {
+            document.getElementById('currentFaces').textContent = count;
+        };
+
+        this.faceDetector.onTotalFacesUpdate = (count) => {
+            document.getElementById('totalFaces').textContent = count;
+        };
+
+        this.faceDetector.onTrackingTimeUpdate = (time) => {
+            document.getElementById('trackingTime').textContent = time + 's';
+        };
+    }
+
+    switchTab(tabName) {
+        // Update tab buttons
+        document.querySelectorAll('.tab-button').forEach(button => {
+            button.classList.toggle('active', button.dataset.tab === tabName);
+        });
+
+        // Update tab content
+        document.querySelectorAll('.tab-content').forEach(content => {
+            content.classList.toggle('active', content.id === `${tabName}-tab`);
+        });
+
+        this.currentTab = tabName;
+
+        if (tabName === 'history') {
+            this.loadVideoHistory();
+        }
+    }
+
+    async loadVideoHistory() {
+        try {
+            const response = await fetch('/api/sessions');
+            if (!response.ok) {
+                throw new Error(`HTTP error! status: ${response.status}`);
+            }
+            const sessions = await response.json();
+
+            const videoList = document.getElementById('videoList');
+            videoList.innerHTML = '';
+
+            if (Array.isArray(sessions) && sessions.length > 0) {
+                sessions.forEach(session => {
+                    const videoItem = this.createVideoItem(session);
+                    videoList.appendChild(videoItem);
+                });
+            } else {
+                videoList.innerHTML = '<div class="video-item">No sessions found</div>';
+            }
+        } catch (error) {
+            console.error('Error loading video history:', error);
+            const videoList = document.getElementById('videoList');
+            videoList.innerHTML = `<div class="video-item">Error loading sessions: ${error.message}</div>`;
+        }
+    }
+
+    createVideoItem(session) {
+        const div = document.createElement('div');
+        div.className = 'video-item';
+
+        const hasVideo = session.video_filename && session.video_filename !== 'null';
+        const duration = this.formatDuration(session.duration || 0);
+
+        div.innerHTML = `
+        <div class="video-item-header">
+            <div class="video-title">
+                <span class="session-status ${hasVideo ? 'status-recorded' : 'status-no-video'}"></span>
+                Session ${session.id.substring(0, 8)}...
+            </div>
+            <div class="video-date">${new Date(session.start_time).toLocaleDateString()}</div>
+        </div>
+        <div class="video-stats">
+            <div class="stat">
+                <span class="stat-label">THỜI GIAN:</span>
+                <span class="stat-value">${duration}</span>
+            </div>
+            <div class="stat">
+                <span class="stat-label">TỔNG KHUÔN MẶT:</span>
+                <span class="stat-value">${session.total_faces || 0}</span>
+            </div>
+            <div class="stat">
+                <span class="stat-label">BẮT ĐẦU:</span>
+                <span class="stat-value">${new Date(session.start_time).toLocaleTimeString()}</span>
+            </div>
+            <div class="stat">
+                <span class="stat-label">KẾT THÚC:</span>
+                <span class="stat-value">${new Date(session.end_time).toLocaleTimeString()}</span>
+            </div>
+        </div>
+        ${!hasVideo ? '<div style="margin-top: 8px; font-size: 12px; color: #ffc107;">📹 Không có video</div>' : ''}
+    `;
+
+        div.addEventListener('click', () => {
+            this.playVideo(session);
+        });
+
+        return div;
+    }
+
+    formatDuration(seconds) {
+        if (!seconds || seconds === 0) return '0s';
+
+        const mins = Math.floor(seconds / 60);
+        const secs = seconds % 60;
+
+        if (mins === 0) {
+            return `${secs}s`;
+        } else if (secs === 0) {
+            return `${mins}m`;
+        } else {
+            return `${mins}m ${secs}s`;
+        }
+    }
+
+    async playVideo(session) {
+        try {
+            const videoPlayer = document.getElementById('playbackVideo');
+            const videoInfo = document.getElementById('videoInfo');
+
+            // Update active video item
+            document.querySelectorAll('.video-item').forEach(item => {
+                item.classList.remove('active');
+            });
+            event.currentTarget.classList.add('active');
+
+            // Load video if available
+            if (session.video_filename) {
+                videoPlayer.src = `/api/videos/${session.video_filename}`;
+                videoPlayer.style.display = 'block';
+
+                // Hiển thị thông tin session
+                // Trong hàm playVideo, sửa phần hiển thị thông tin
+                videoInfo.innerHTML = `
+                    <div class="info-item">
+                        <span class="info-label">Session ID:</span>
+                        <span class="info-value">${session.id}</span>
+                    </div>
+                    <div class="info-item">
+                        <span class="info-label">Thời gian bắt đầu:</span>
+                        <span class="info-value">${new Date(session.start_time).toLocaleString()}</span>
+                    </div>
+                    <div class="info-item">
+                        <span class="info-label">Thời gian kết thúc:</span>
+                        <span class="info-value">${new Date(session.end_time).toLocaleString()}</span>
+                    </div>
+                    <div class="info-item">
+                        <span class="info-label">Tổng khuôn mặt:</span>
+                        <span class="info-value">${session.total_faces || 0}</span>
+                    </div>
+                    <div class="info-item">
+                        <span class="info-label">Thời lượng:</span>
+                        <span class="info-value">${this.formatDuration(session.duration || 0)}</span>
+                    </div>
+                    ${session.video_filename ?
+                        `<div class="info-item" style="border-bottom: none; margin-bottom: 0; padding-bottom: 0;">
+                            <span class="info-label">File video:</span>
+                            <span class="info-value" style="color: #28a745;">${session.video_filename}</span>
+                        </div>` :
+                        '<div class="info-item" style="border-bottom: none; margin-bottom: 0; padding-bottom: 0;"><span class="info-label" style="color: orange;">Video:</span><span class="info-value" style="color: orange;">Không có</span></div>'
+                    }
+                `;
+            } else {
+                videoPlayer.style.display = 'none';
+                videoInfo.innerHTML = `
+                <div class="no-video-selected">
+                    <div class="icon">⚠️</div>
+                    <div>
+                        <h4>Không có video cho session này</h4>
+                        <p>Session "${session.id}" không có file video đi kèm.</p>
+                        <div style="margin-top: 20px; text-align: left;">
+                            <div class="info-item">
+                                <span class="info-label">Session ID:</span>
+                                <span class="info-value">${session.id}</span>
+                            </div>
+                            <div class="info-item">
+                                <span class="info-label">Thời gian:</span>
+                                <span class="info-value">${new Date(session.start_time).toLocaleString()} - ${new Date(session.end_time).toLocaleTimeString()}</span>
+                            </div>
+                            <div class="info-item">
+                                <span class="info-label">Tổng khuôn mặt:</span>
+                                <span class="info-value">${session.total_faces || 0}</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            `;
+            }
+        } catch (error) {
+            console.error('Error playing video:', error);
+            const videoInfo = document.getElementById('videoInfo');
+            videoInfo.innerHTML = `
+            <div class="no-video-selected">
+                <div class="icon">❌</div>
+                <div>
+                    <h4>Lỗi tải video</h4>
+                    <p>Không thể tải video: ${error.message}</p>
+                </div>
+            </div>
+        `;
+        }
+    }
+
+    async saveSessionData(videoData) {
+        try {
+            const sessionData = {
+                id: this.faceDetector.sessionId,
+                start_time: new Date(this.faceDetector.startTime).toISOString(),
+                end_time: new Date().toISOString(),
+                total_faces: this.faceDetector.totalFacesCount,
+                duration: Math.floor((Date.now() - this.faceDetector.startTime) / 1000),
+                video_filename: videoData?.filename || null
+            };
+
+            const response = await fetch('/api/sessions', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify(sessionData)
+            });
+
+            if (!response.ok) {
+                throw new Error(`HTTP error! status: ${response.status}`);
+            }
+
+            console.log('Session saved successfully');
+
+            // Reload video history
+            this.loadVideoHistory();
+
+        } catch (error) {
+            console.error('Error saving session data:', error);
+        }
+    }
+}
+
+// Initialize application when DOM is loaded
+document.addEventListener('DOMContentLoaded', () => {
+    window.faceDetectionApp = new FaceDetectionApp();
+});
