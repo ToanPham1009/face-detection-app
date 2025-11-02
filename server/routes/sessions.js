@@ -37,19 +37,20 @@ router.post('/', async (req, res) => {
         let result;
         if (existingSession.rows.length > 0) {
             console.log('🔄 Session exists, updating...');
-            // UPDATE session hiện có
+            // UPDATE session hiện có - CHỈ update end_time, total_faces, video_filename
             result = await pool.query(
                 `UPDATE sessions 
-                 SET end_time = $1, total_faces = $2,  
-                     video_filename = COALESCE($4, video_filename)
-                 WHERE id = $5 
+                 SET end_time = $1, 
+                     total_faces = $2,  
+                     video_filename = COALESCE($3, video_filename)
+                 WHERE id = $4 
                  RETURNING *`,
-                [end_time, total_faces, video_filename, id]
+                [end_time, total_faces, video_filename, id]  // 🆕 Sửa index: $1, $2, $3, $4
             );
             console.log('✅ Session updated successfully');
         } else {
             console.log('🆕 Creating new session...');
-            // INSERT session mới
+            // INSERT session mới - CÓ duration
             result = await pool.query(
                 `INSERT INTO sessions (id, start_time, end_time, total_faces, duration, video_filename) 
                  VALUES ($1, $2, $3, $4, $5, $6) RETURNING *`,
