@@ -65,8 +65,6 @@ router.post('/upload', upload.single('video'), async (req, res) => {
       console.log('✅ Session updated with Cloudinary URL');
     }
 
-    // Xóa file tạm
-    fs.unlinkSync(req.file.path);
 
     res.json({ 
       message: 'Video uploaded successfully',
@@ -77,10 +75,6 @@ router.post('/upload', upload.single('video'), async (req, res) => {
   } catch (error) {
     console.error('❌ Error uploading video:', error);
     
-    // Xóa file tạm nếu có lỗi
-    if (req.file && fs.existsSync(req.file.path)) {
-      fs.unlinkSync(req.file.path);
-    }
     
     res.status(500).json({ 
       error: 'Failed to upload video',
