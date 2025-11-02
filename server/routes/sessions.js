@@ -62,7 +62,6 @@ router.post('/', async (req, res) => {
                 updateValues.push(video_filename);
             }
 
-            updateFields.push(`updated_at = NOW()`);
             updateValues.push(id); // WHERE condition
 
             result = await pool.query(
