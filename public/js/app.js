@@ -248,6 +248,9 @@ class FaceDetectionApp {
 
     async saveSessionData(videoData) {
         try {
+            // THÊM random để tránh trùng ID
+            const sessionId = Date.now() + '-' + Math.random().toString(36).substr(2, 9);
+            
             const sessionData = {
                 id: this.faceDetector.sessionId,
                 start_time: new Date(this.faceDetector.startTime).toISOString(),
