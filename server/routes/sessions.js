@@ -14,9 +14,9 @@ router.get('/', async (req, res) => {
         res.json(result.rows);
     } catch (error) {
         console.error('Error fetching sessions:', error);
-        res.status(500).json({
+        res.status(500).json({ 
             error: 'Failed to fetch sessions',
-            details: error.message
+            details: error.message 
         });
     }
 });
@@ -28,7 +28,7 @@ router.post('/', async (req, res) => {
     console.log('Processing session:', { id, start_time, end_time, total_faces, duration, video_filename });
 
     try {
-        // KIỂM TRA session đã tồn tại chưa
+        // 🆕 KIỂM TRA session đã tồn tại chưa
         const existingSession = await pool.query(
             'SELECT id FROM sessions WHERE id = $1',
             [id]
@@ -37,39 +37,14 @@ router.post('/', async (req, res) => {
         let result;
         if (existingSession.rows.length > 0) {
             console.log('🔄 Session exists, updating...');
-
-            // 🆕 CHỈ UPDATE các field thực sự thay đổi
-            // Giữ nguyên start_time, chỉ update end_time nếu mới hơn
-            // Giữ nguyên duration lớn nhất
-            const updateFields = [];
-            const updateValues = [];
-            let paramCount = 1;
-
-            // Luôn update end_time và total_faces
-            updateFields.push(`end_time = $${paramCount++}`);
-            updateValues.push(end_time);
-
-            updateFields.push(`total_faces = $${paramCount++}`);
-            updateValues.push(total_faces);
-
-            // Chỉ update duration nếu lớn hơn
-            updateFields.push(`duration = GREATEST(duration, $${paramCount++})`);
-            updateValues.push(duration);
-
-            // Chỉ update video_filename nếu có giá trị mới
-            if (video_filename) {
-                updateFields.push(`video_filename = $${paramCount++}`);
-                updateValues.push(video_filename);
-            }
-
-            updateValues.push(id); // WHERE condition
-
+            // UPDATE session hiện có
             result = await pool.query(
                 `UPDATE sessions 
-                 SET ${updateFields.join(', ')}
-                 WHERE id = $${paramCount}
+                 SET end_time = $1, total_faces = $2,  
+                     video_filename = COALESCE($4, video_filename)
+                 WHERE id = $5 
                  RETURNING *`,
-                [...updateValues, id]
+                [end_time, total_faces, video_filename, id]
             );
             console.log('✅ Session updated successfully');
         } else {
@@ -86,9 +61,9 @@ router.post('/', async (req, res) => {
         res.status(201).json(result.rows[0]);
     } catch (error) {
         console.error('❌ Error saving session:', error);
-        res.status(500).json({
+        res.status(500).json({ 
             error: 'Failed to save session',
-            details: error.message
+            details: error.message 
         });
     }
 });
@@ -110,9 +85,9 @@ router.get('/:id', async (req, res) => {
         res.json(result.rows[0]);
     } catch (error) {
         console.error('Error fetching session:', error);
-        res.status(500).json({
+        res.status(500).json({ 
             error: 'Failed to fetch session',
-            details: error.message
+            details: error.message 
         });
     }
 });
