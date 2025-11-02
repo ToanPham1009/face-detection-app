@@ -1,6 +1,8 @@
 const express = require('express');
 const multer = require('multer');
-const path = require('fs');
+const fs = require('fs');
+const path = require('path');
+
 const { pool } = require('../config/database');
 const cloudinary = require('../config/cloudinary');
 const router = express.Router();
