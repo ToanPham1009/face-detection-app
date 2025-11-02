@@ -19,11 +19,32 @@ if (!fs.existsSync(uploadsDir)) {
   fs.mkdirSync(uploadsDir, { recursive: true });
 }
 
-// Routes
-app.use('/api/sessions', require('./routes/sessions'));
-app.use('/api/minutes', require('./routes/minutes'));
-app.use('/api/videos', require('./routes/videos'));
+// Routes với try-catch và debug
+try {
+  console.log('🔄 Loading sessions routes...');
+  app.use('/api/sessions', require('./routes/sessions'));
+  console.log('✅ Sessions routes loaded');
+} catch (error) {
+  console.error('❌ Error loading sessions routes:', error);
+}
 
+try {
+  console.log('🔄 Loading minutes routes...');
+  app.use('/api/minutes', require('./routes/minutes'));
+  console.log('✅ Minutes routes loaded');
+} catch (error) {
+  console.error('❌ Error loading minutes routes:', error);
+}
+
+try {
+  console.log('🔄 Loading videos routes...');
+  app.use('/api/videos', require('./routes/videos'));
+  console.log('✅ Videos routes loaded');
+} catch (error) {
+  console.error('❌ Error loading videos routes:', error);
+}
+
+console.log('🎯 All routes configured');
 // Health check
 app.get('/health', (req, res) => {
   res.json({ status: 'OK', timestamp: new Date().toISOString() });
