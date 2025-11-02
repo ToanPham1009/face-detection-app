@@ -92,4 +92,41 @@ router.get('/:id', async (req, res) => {
     }
 });
 
+// Hàm hiển thị video khi click vào session
+function playSessionVideo(session) {
+  const videoPlayer = document.getElementById('playbackVideo');
+  const videoInfo = document.getElementById('videoInfo');
+  
+  if (session.video_filename) {
+    // Hiển thị video player
+    videoPlayer.style.display = 'block';
+    videoInfo.style.display = 'none';
+    
+    // Set video source
+    videoPlayer.src = session.video_filename;
+    videoPlayer.load();
+    
+    console.log('🎥 Playing video:', session.video_filename);
+  } else {
+    // Hiển thị thông báo không có video
+    videoPlayer.style.display = 'none';
+    videoInfo.style.display = 'block';
+    console.log('❌ No video for session:', session.id);
+  }
+}
+
+// Khi click vào session trong list
+function setupSessionClickHandlers() {
+  const sessionItems = document.querySelectorAll('.session-item');
+  sessionItems.forEach(item => {
+    item.addEventListener('click', function() {
+      const sessionId = this.dataset.sessionId;
+      const session = sessions.find(s => s.id === sessionId);
+      if (session) {
+        playSessionVideo(session);
+      }
+    });
+  });
+}
+
 module.exports = router;

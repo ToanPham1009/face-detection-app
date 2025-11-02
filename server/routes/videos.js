@@ -50,6 +50,7 @@ router.post('/upload', upload.single('video'), async (req, res) => {
       {
         resource_type: "video",
         folder: "face-detection-videos",
+        format: "mp4"
       }
     );
 
