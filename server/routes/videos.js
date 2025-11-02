@@ -7,6 +7,12 @@ const { pool } = require('../config/database');
 const cloudinary = require('../config/cloudinary');
 const router = express.Router();
 
+console.log('Cloudinary config:', {
+  cloud_name: process.env.CLOUDINARY_CLOUD_NAME ? 'SET' : 'MISSING',
+  api_key: process.env.CLOUDINARY_API_KEY ? 'SET' : 'MISSING', 
+  api_secret: process.env.CLOUDINARY_API_SECRET ? 'SET' : 'MISSING'
+});
+
 // Cấu hình multer để lưu tạm
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
@@ -21,10 +27,11 @@ const storage = multer.diskStorage({
   }
 });
 
-const upload = multer({ 
-  storage: storage,
+// THAY THẾ diskStorage bằng memoryStorage
+const upload = multer({
+  storage: multer.memoryStorage(),  // Dùng memory thay vì disk
   limits: {
-    fileSize: 50 * 1024 * 1024 // 50MB limit
+    fileSize: 50 * 1024 * 1024 // 50MB
   }
 });
 
@@ -37,13 +44,14 @@ router.post('/upload', upload.single('video'), async (req, res) => {
       return res.status(400).json({ error: 'No video file uploaded' });
     }
 
-    // Upload lên Cloudinary
-    const result = await cloudinary.uploader.upload(req.file.path, {
-      resource_type: "video",
-      folder: "face-detection-videos",
-      quality: "auto",
-      fetch_format: "auto"
-    });
+    // Upload trực tiếp từ buffer, không cần file tạm
+    const result = await cloudinary.uploader.upload(
+      `data:video/mp4;base64,${req.file.buffer.toString('base64')}`, 
+      {
+        resource_type: "video",
+        folder: "face-detection-videos",
+      }
+    );
 
     console.log('✅ Video uploaded to Cloudinary:', result.secure_url);
 
@@ -116,5 +124,7 @@ router.get('/', async (req, res) => {
     res.status(500).json({ error: 'Failed to fetch videos' });
   }
 });
+
+
 
 module.exports = router;
