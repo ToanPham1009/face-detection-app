@@ -11,86 +11,278 @@
 </head>
 
 <body>
-    <div class="container">
-        <h1>Face Detection Counter</h1>
-
-        <!-- Tab Navigation -->
-        <div class="tabs">
-            <button class="tab-button active" data-tab="live">Live Detection</button>
-            <button class="tab-button" data-tab="history">Video History</button>
-        </div>
-
-        <!-- Live Detection Tab -->
-        <div id="live-tab" class="tab-content active">
-            <div class="camera-container">
-                <video id="video" autoplay playsinline></video>
-                <canvas id="canvas"></canvas>
-            </div>
-
-            <div class="controls">
-                <button id="startCamera" class="btn btn-primary">Bật Camera</button>
-                <button id="stopCamera" class="btn btn-danger" disabled>Tắt Camera</button>
-                <button id="startTracking" class="btn btn-success" disabled>Bắt đầu đếm</button>
-                <button id="stopTracking" class="btn btn-warning" disabled>Kết thúc đếm</button>
-            </div>
-
-            <div class="stats">
-                <div class="stat-card">
-                    <div class="stat-label">Khuôn mặt hiện tại</div>
-                    <div id="currentFaces" class="stat-value">0</div>
-                </div>
-                <div class="stat-card">
-                    <div class="stat-label">Tổng khuôn mặt đã xuất hiện</div>
-                    <div id="totalFaces" class="stat-value">0</div>
-                </div>
-                <div class="stat-card">
-                    <div class="stat-label">Thời gian đếm</div>
-                    <div id="trackingTime" class="stat-value">0s</div>
-                </div>
-            </div>
-
-            <div class="recording-status" id="recordingStatus">
-                <span class="status-indicator"></span>
-                <span>Đang ghi hình...</span>
+    <!-- Auth Container - HIỆN MẶC ĐỊNH -->
+    <div id="authContainer">
+        <!-- Login Form -->
+        <div id="loginForm" class="auth-form active">
+            <h2>🔐 Đăng nhập</h2>
+            <form id="loginFormElement">
+                <input type="email" id="loginEmail" placeholder="Email" required>
+                <input type="password" id="loginPassword" placeholder="Mật khẩu" required>
+                <button type="submit" id="loginButton">
+                    <span id="loginText">Đăng nhập</span>
+                    <span id="loginLoading" class="loading" style="display: none;"></span>
+                </button>
+            </form>
+            <div class="error-message" id="loginError"></div>
+            <div class="auth-switch">
+                <p>Chưa có tài khoản? <a id="showRegister">Đăng ký ngay</a></p>
             </div>
         </div>
 
-        <!-- Video History Tab -->
-        <div id="history-tab" class="tab-content">
-            <div class="video-history">
-                <!-- Danh sách video bên trái -->
-                <div class="video-list">
-                    <h3 class="video-list-header">Danh sách video đã lưu</h3>
-                    <div class="video-list-content" id="videoList">
-                        <!-- Video items will be loaded here -->
-                    </div>
-                </div>
-
-                <!-- Video player bên phải -->
-                <div class="video-player-container">
-                    <h3 class="video-player-header">Video Player</h3>
-                    <div class="video-player-content">
-                        <video id="playbackVideo" controls>
-                            Your browser does not support the video tag.
-                        </video>
-                        <div class="video-info" id="videoInfo">
-                            <div class="no-video-selected">
-                                <div class="icon">📹</div>
-                                <div>
-                                    <h4>Chưa có video được chọn</h4>
-                                    <p>Vui lòng chọn một session từ danh sách bên trái để xem video và thông tin chi
-                                        tiết.</p>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
+        <!-- Register Form -->
+        <div id="registerForm" class="auth-form">
+            <h2>📝 Đăng ký tài khoản</h2>
+            <form id="registerFormElement">
+                <input type="text" id="registerUsername" placeholder="Tên người dùng" required>
+                <input type="email" id="registerEmail" placeholder="Email" required>
+                <input type="password" id="registerPassword" placeholder="Mật khẩu (ít nhất 6 ký tự)" required minlength="6">
+                <button type="submit" id="registerButton">
+                    <span id="registerText">Đăng ký</span>
+                    <span id="registerLoading" class="loading" style="display: none;"></span>
+                </button>
+            </form>
+            <div class="error-message" id="registerError"></div>
+            <div class="auth-switch">
+                <p>Đã có tài khoản? <a id="showLogin">Đăng nhập</a></p>
             </div>
         </div>
     </div>
 
-    <script src="js/videoManager.js"></script>
-    <script src="js/faceDetection.js"></script>
+    <!-- Main App - ẨN MẶC ĐỊNH -->
+    <div id="mainApp">
+        <!-- Header với user info và logout -->
+        <header class="app-header">
+            <div class="header-content">
+                <h1>🎭 Face Detection App</h1>
+                <div class="user-info">
+                    <span id="userWelcome">Xin chào, <strong id="usernameDisplay"></strong></span>
+                    <button id="logoutButton" class="logout-btn">🚪 Đăng xuất</button>
+                </div>
+            </div>
+        </header>
+
+        <!-- Nội dung app hiện tại của bạn GIỮ NGUYÊN -->
+        <div class="container">
+            <!-- Các tab và nội dung hiện tại -->
+            <div class="tabs">
+                <button class="tab-button active" data-tab="live">Live Detection</button>
+                <button class="tab-button" data-tab="history">Video History</button>
+            </div>
+
+            <div class="tab-content active" id="live-tab">
+                <!-- Nội dung live detection hiện tại -->
+            </div>
+
+            <div class="tab-content" id="history-tab">
+                <!-- Nội dung history hiện tại -->
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Auth Management
+        class AuthManager {
+            constructor() {
+                this.token = localStorage.getItem('authToken');
+                this.user = JSON.parse(localStorage.getItem('user') || 'null');
+                
+                this.initializeAuth();
+            }
+
+            initializeAuth() {
+                // 🎯 QUAN TRỌNG: Kiểm tra nếu đã login thì show app, không thì show auth
+                if (this.token && this.user) {
+                    this.showMainApp();
+                } else {
+                    this.showAuth();
+                }
+
+                this.setupEventListeners();
+            }
+
+            setupEventListeners() {
+                // Login form
+                document.getElementById('loginFormElement').addEventListener('submit', (e) => {
+                    e.preventDefault();
+                    this.login();
+                });
+
+                // Register form
+                document.getElementById('registerFormElement').addEventListener('submit', (e) => {
+                    e.preventDefault();
+                    this.register();
+                });
+
+                // Switch between forms
+                document.getElementById('showRegister').addEventListener('click', () => {
+                    this.showForm('register');
+                });
+
+                document.getElementById('showLogin').addEventListener('click', () => {
+                    this.showForm('login');
+                });
+
+                // Logout button
+                document.getElementById('logoutButton').addEventListener('click', () => {
+                    this.logout();
+                });
+            }
+
+            showForm(formType) {
+                document.getElementById('loginForm').classList.remove('active');
+                document.getElementById('registerForm').classList.remove('active');
+                document.getElementById(formType + 'Form').classList.add('active');
+                
+                // Clear errors
+                this.clearErrors();
+            }
+
+            clearErrors() {
+                document.getElementById('loginError').textContent = '';
+                document.getElementById('registerError').textContent = '';
+            }
+
+            showLoading(buttonType, isLoading) {
+                const textElement = document.getElementById(buttonType + 'Text');
+                const loadingElement = document.getElementById(buttonType + 'Loading');
+                const buttonElement = document.getElementById(buttonType + 'Button');
+
+                if (isLoading) {
+                    textElement.style.display = 'none';
+                    loadingElement.style.display = 'inline-block';
+                    buttonElement.disabled = true;
+                } else {
+                    textElement.style.display = 'inline-block';
+                    loadingElement.style.display = 'none';
+                    buttonElement.disabled = false;
+                }
+            }
+
+            async login() {
+                const email = document.getElementById('loginEmail').value;
+                const password = document.getElementById('loginPassword').value;
+                const errorElement = document.getElementById('loginError');
+
+                this.showLoading('login', true);
+                this.clearErrors();
+
+                try {
+                    const response = await fetch('/api/auth/login', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                        },
+                        body: JSON.stringify({ email, password })
+                    });
+
+                    const data = await response.json();
+
+                    if (response.ok) {
+                        this.token = data.token;
+                        this.user = data.user;
+                        
+                        localStorage.setItem('authToken', this.token);
+                        localStorage.setItem('user', JSON.stringify(this.user));
+                        
+                        this.showMainApp();
+                    } else {
+                        errorElement.textContent = data.error || 'Đăng nhập thất bại';
+                    }
+                } catch (error) {
+                    errorElement.textContent = 'Lỗi kết nối đến server';
+                } finally {
+                    this.showLoading('login', false);
+                }
+            }
+
+            async register() {
+                const username = document.getElementById('registerUsername').value;
+                const email = document.getElementById('registerEmail').value;
+                const password = document.getElementById('registerPassword').value;
+                const errorElement = document.getElementById('registerError');
+
+                this.showLoading('register', true);
+                this.clearErrors();
+
+                try {
+                    const response = await fetch('/api/auth/register', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                        },
+                        body: JSON.stringify({ username, email, password })
+                    });
+
+                    const data = await response.json();
+
+                    if (response.ok) {
+                        // Auto login after register
+                        this.token = data.token;
+                        this.user = data.user;
+                        
+                        localStorage.setItem('authToken', this.token);
+                        localStorage.setItem('user', JSON.stringify(this.user));
+                        
+                        this.showMainApp();
+                    } else {
+                        errorElement.textContent = data.error || 'Đăng ký thất bại';
+                    }
+                } catch (error) {
+                    errorElement.textContent = 'Lỗi kết nối đến server';
+                } finally {
+                    this.showLoading('register', false);
+                }
+            }
+
+            showMainApp() {
+                // Ẩn auth, hiện app chính
+                document.getElementById('authContainer').style.display = 'none';
+                document.getElementById('mainApp').style.display = 'block';
+                
+                // Hiển thị tên user
+                document.getElementById('usernameDisplay').textContent = this.user.username;
+                
+                // Khởi tạo app chính (nếu chưa có)
+                if (typeof window.faceDetectionApp === 'undefined') {
+                    setTimeout(() => {
+                        window.faceDetectionApp = new FaceDetectionApp();
+                    }, 100);
+                }
+            }
+
+            showAuth() {
+                // Ẩn app, hiện auth
+                document.getElementById('mainApp').style.display = 'none';
+                document.getElementById('authContainer').style.display = 'block';
+                
+                // Reset forms
+                this.showForm('login');
+                this.clearErrors();
+                
+                // Clear input fields
+                document.getElementById('loginFormElement').reset();
+                document.getElementById('registerFormElement').reset();
+            }
+
+            logout() {
+                localStorage.removeItem('authToken');
+                localStorage.removeItem('user');
+                this.token = null;
+                this.user = null;
+                this.showAuth();
+            }
+        }
+
+        // 🚀 KHỞI CHẠY: Luôn khởi tạo AuthManager đầu tiên
+        document.addEventListener('DOMContentLoaded', () => {
+            window.authManager = new AuthManager();
+        });
+    </script>
+
+    <!-- Các script hiện tại của bạn -->
+    <script src="js/face-detector.js"></script>
+    <script src="js/video-manager.js"></script>
     <script src="js/app.js"></script>
 </body>
 

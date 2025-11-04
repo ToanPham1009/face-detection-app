@@ -42,6 +42,18 @@ async function initializeDatabase() {
       )
     `);
 
+    // Trong hàm initializeDatabase(), thêm:
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS users (
+        id SERIAL PRIMARY KEY,
+        username VARCHAR(50) UNIQUE NOT NULL,
+        email VARCHAR(100) UNIQUE NOT NULL,
+        password VARCHAR(255) NOT NULL,
+        created_at TIMESTAMP DEFAULT NOW(),
+        updated_at TIMESTAMP DEFAULT NOW()
+      )
+    `);
+
     console.log('✅ Database tables verified/created successfully');
   } catch (error) {
     console.error('❌ Error initializing database:', error);
