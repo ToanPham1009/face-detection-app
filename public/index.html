@@ -289,15 +289,36 @@
                 document.getElementById('usernameDisplay').textContent = this.user.username;
 
                 // 🆕 KHỞI TẠO APP CHÍNH
+                // Kiểm tra nếu app chưa được khởi tạo
                 if (typeof window.faceDetectionApp === 'undefined') {
-                    // Đợi một chút để DOM render xong
+                    console.log('🚀 Initializing main application...');
+                    // Trong hàm initializeMainApp()
+                    console.log('🔄 Starting main app initialization...');
+                    console.log('FaceDetectionApp constructor:', typeof FaceDetectionApp);
+                    console.log('DOM elements:', {
+                        startCamera: document.getElementById('startCamera'),
+                        stopCamera: document.getElementById('stopCamera'),
+                        startTracking: document.getElementById('startTracking'),
+                        stopTracking: document.getElementById('stopTracking')
+                    });
+
+                    // Đợi DOM render xong
                     setTimeout(() => {
-                        window.faceDetectionApp = new FaceDetectionApp();
+                        try {
+                            // 🆕 KHỞI TẠO APP CHÍNH
+                            window.faceDetectionApp = new FaceDetectionApp();
+                            console.log('✅ Main app initialized successfully');
 
-                        // 🆕 Kích hoạt tab mặc định
-                        window.faceDetectionApp.switchTab('live');
+                            // 🆕 KÍCH HOẠT TAB MẶC ĐỊNH
+                            window.faceDetectionApp.switchTab('live');
 
-                    }, 500);
+                            // 🆕 LOAD DỮ LIỆU BAN ĐẦU
+                            window.faceDetectionApp.loadVideoHistory();
+
+                        } catch (error) {
+                            console.error('❌ Error initializing main app:', error);
+                        }
+                    }, 300); // Tăng thời gian chờ
                 }
             }
 
