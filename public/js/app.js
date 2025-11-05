@@ -1,12 +1,22 @@
 // Main application controller
 class FaceDetectionApp {
     constructor() {
-        this.faceDetector = new FaceDetector();
-        this.videoManager = new VideoManager();
-        this.currentTab = 'live';
+        console.log('🔄 FaceDetectionApp constructor called');
+        
+        // 🆕 DELAY khởi tạo để đảm bảo DOM đã sẵn sàng
+        setTimeout(() => {
+            try {
+                this.faceDetector = new FaceDetector();
+                this.videoManager = new VideoManager();
+                this.currentTab = 'live';
 
-        this.initializeEventListeners();
-        this.loadVideoHistory();
+                this.initializeEventListeners();
+                this.loadVideoHistory();
+                console.log('✅ FaceDetectionApp initialized successfully');
+            } catch (error) {
+                console.error('❌ Error initializing FaceDetectionApp:', error);
+            }
+        }, 500);
     }
 
     initializeEventListeners() {

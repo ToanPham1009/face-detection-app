@@ -1,8 +1,8 @@
 // Face detection functionality
 class FaceDetector {
     constructor() {
-        this.video = document.getElementById('video');
-        this.canvas = document.getElementById('canvas');
+        this.video = document.getElementById('webcamVideo');
+        this.canvas = document.getElementById('faceCanvas');
         this.ctx = this.canvas.getContext('2d');
         this.model = null;
         this.stream = null;
@@ -22,6 +22,21 @@ class FaceDetector {
         this.onFaceCountUpdate = null;
         this.onTotalFacesUpdate = null;
         this.onTrackingTimeUpdate = null;
+
+        // 🆕 THÊM KIỂM TRA NULL
+        if (!this.video || !this.canvas) {
+            console.warn('⚠️ Video or Canvas element not found, retrying...');
+            // Thử lại sau 1 giây
+            setTimeout(() => {
+                if (!this.video) this.video = document.getElementById('webcamVideo');
+                if (!this.canvas) this.canvas = document.getElementById('faceCanvas');
+                if (this.video && this.canvas) {
+                    this.ctx = this.canvas.getContext('2d');
+                    console.log('✅ Canvas initialized successfully');
+                }
+            }, 1000);
+            return;
+        }
         
         this.loadFaceDetectionModel();
     }
