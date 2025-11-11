@@ -812,13 +812,11 @@ h1 {
 }
 
 #faceCanvas {
-    position: absolute;
-    top: 0;
-    left: 0;
     width: 100%;
-    height: 100%;
-    pointer-events: none;
-    background: transparent !important; /* Canvas trong suốt, chỉ vẽ detection boxes */
+    height: auto;
+    display: block;
+    background: #000;
+    transform: scaleX(-1); /* Mirror effect cho front camera */
 }
 
 /* History Container */

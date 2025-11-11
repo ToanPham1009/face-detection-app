@@ -7,51 +7,38 @@ class VideoManager {
         this.currentSessionId = null;
     }
     
-    async startRecording() {
-        if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-            console.error('MediaDevices API not supported');
-            return;
-        }
-        
+    async startRecording(videoElement) {
         try {
-            const stream = await navigator.mediaDevices.getUserMedia({ 
-                video: { 
-                    width: { ideal: 640 }, 
-                    height: { ideal: 480 } 
-                },
-                audio: false
-            });
-            
-            const mimeType = this.getSupportedMimeType();
-            if (!mimeType) {
-                console.warn('No supported MIME type found for recording');
-                return;
+            if (!videoElement || !videoElement.srcObject) {
+                throw new Error('Video element or stream not available');
             }
+
+            const stream = videoElement.srcObject;
             
+            // Tạo MediaRecorder
             this.mediaRecorder = new MediaRecorder(stream, {
-                mimeType: mimeType
+                mimeType: 'video/webm;codecs=vp9',
+                videoBitsPerSecond: 2500000
             });
-            
+
             this.recordedChunks = [];
-            this.currentSessionId = Date.now().toString();
             
             this.mediaRecorder.ondataavailable = (event) => {
                 if (event.data.size > 0) {
                     this.recordedChunks.push(event.data);
                 }
             };
-            
-            this.mediaRecorder.onstop = () => {
-                this.saveRecordingToCloudinary();
-            };
-            
+
+            // Bắt đầu recording
             this.mediaRecorder.start(1000);
             this.isRecording = true;
             
             console.log('🎥 Recording started');
+            return true;
             
         } catch (error) {
             console.error('Error starting recording:', error);
+            throw error;
         }
     }
     

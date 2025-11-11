@@ -1,7 +1,6 @@
 // Face detection functionality
 class FaceDetector {
     constructor() {
-        this.video = document.getElementById('webcamVideo');
         this.canvas = document.getElementById('faceCanvas');
         this.ctx = this.canvas.getContext('2d');
         this.model = null;
@@ -23,10 +22,11 @@ class FaceDetector {
         this.onTotalFacesUpdate = null;
         this.onTrackingTimeUpdate = null;
 
-        // Biến để theo dõi video dimensions
-        this.videoWidth = 0;
-        this.videoHeight = 0;
-        this.canvasInitialized = false;
+        // Tạo video element ẩn để lấy stream
+        this.video = document.createElement('video');
+        this.video.playsInline = true;
+        this.video.muted = true;
+        this.video.style.display = 'none';
 
         this.loadFaceDetectionModel();
     }
@@ -80,8 +80,10 @@ class FaceDetector {
             
             this.video.srcObject = this.stream;
             
+            // Khi video đã load metadata, khởi tạo canvas
             this.video.addEventListener('loadedmetadata', () => {
-                this.initializeCanvasDimensions();
+                this.initializeCanvas();
+                this.video.play(); // Bắt đầu play video
             });
             
             this.updateButtonStates();
@@ -89,6 +91,20 @@ class FaceDetector {
         } catch (error) {
             console.error('Error accessing camera:', error);
             alert('Không thể truy cập camera. Vui lòng kiểm tra quyền truy cập.');
+        }
+    }
+
+    // Khởi tạo canvas với kích thước video
+    initializeCanvas() {
+        if (this.video.videoWidth > 0 && this.video.videoHeight > 0) {
+            this.canvas.width = this.video.videoWidth;
+            this.canvas.height = this.video.videoHeight;
+            
+            // Áp dụng mirror effect cho front camera
+            this.ctx.translate(this.canvas.width, 0);
+            this.ctx.scale(-1, 1);
+            
+            console.log('✅ Canvas initialized with dimensions:', this.canvas.width, 'x', this.canvas.height);
         }
     }
 
@@ -119,11 +135,17 @@ class FaceDetector {
             this.stream.getTracks().forEach(track => track.stop());
             this.stream = null;
             this.video.srcObject = null;
-
+            
             if (this.isTracking) {
                 this.stopTracking();
             }
-
+            
+            // Clear canvas
+            this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
+            
+            // Reset transform
+            this.ctx.setTransform(1, 0, 0, 1, 0, 0);
+            
             this.updateButtonStates();
             console.log('Camera stopped');
         }
@@ -320,23 +342,13 @@ class FaceDetector {
     }
 
     async detectFaces() {
-        if (!this.isTracking || !this.model || !this.video) return;
+        if (!this.isTracking || !this.model || !this.stream) return;
         
         try {
-            // Kiểm tra video đã sẵn sàng chưa
-            if (this.video.videoWidth === 0 || this.video.videoHeight === 0) {
-                return;
-            }
-            
-            // Khởi tạo canvas dimensions nếu chưa
-            if (!this.canvasInitialized) {
-                this.initializeCanvasDimensions();
-            }
+            // Vẽ video frame lên canvas
+            this.drawVideoFrame();
             
             const predictions = await this.model.estimateFaces(this.video, false);
-            
-            // Clear canvas (chỉ clear, không vẽ video frame)
-            this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
             
             if (predictions.length > 0) {
                 // Update current face count
@@ -362,22 +374,38 @@ class FaceDetector {
                 // Vẽ thông tin khi không có khuôn mặt
                 this.drawNoFacesInfo();
             }
+            
+            // Vẽ thông tin tracking
+            this.drawTrackingInfo();
+            
         } catch (error) {
             console.error('Error detecting faces:', error);
         }
     }
 
+    // Vẽ video frame lên canvas
+    drawVideoFrame() {
+        if (this.video.videoWidth === 0 || this.video.videoHeight === 0) return;
+        
+        try {
+            // Vẽ video frame
+            this.ctx.drawImage(
+                this.video, 
+                0, 0, 
+                this.canvas.width, 
+                this.canvas.height
+            );
+        } catch (error) {
+            console.error('Error drawing video frame:', error);
+        }
+    }
+
     // Vẽ thông tin khi không có khuôn mặt
     drawNoFacesInfo() {
-        if (!this.ctx) return;
-        
         this.ctx.fillStyle = '#ffffff';
         this.ctx.font = 'bold 16px Arial';
         this.ctx.textAlign = 'center';
         this.ctx.fillText('🔍 Đang tìm khuôn mặt...', this.canvas.width / 2, 30);
-        
-        // Vẽ thông tin tracking
-        this.drawTrackingInfo();
     }
 
     // Thuật toán theo dõi khuôn mặt cải tiến
@@ -409,6 +437,7 @@ class FaceDetector {
         return newFaces;
     }
 
+    // Vẽ detection boxes và landmarks
     drawFaceDetections(predictions) {
         const trackedFaces = this.faceTracker.getCurrentFaces();
         
@@ -470,29 +499,23 @@ class FaceDetector {
                 this.ctx.fillRect(landmark[0] - 2, landmark[1] - 2, 4, 4);
             });
         });
-        
-        // Hiển thị thông tin tracking
-        this.drawTrackingInfo();
     }
 
     drawTrackingInfo() {
-        if (!this.ctx) return;
-        
-        this.ctx.textAlign = 'left';
-        
-        // Background cho text để dễ đọc
+        // Vẽ background cho text
         this.ctx.fillStyle = 'rgba(0, 0, 0, 0.6)';
-        this.ctx.fillRect(10, 10, 280, 100);
+        this.ctx.fillRect(10, 10, 200, 80);
         
         // Text information
         this.ctx.fillStyle = '#ffffff';
-        this.ctx.font = 'bold 16px Arial';
-        this.ctx.fillText('🎭 Face Detection Active', 20, 30);
+        this.ctx.font = 'bold 14px Arial';
+        this.ctx.textAlign = 'left';
+        this.ctx.fillText('🎭 Face Detection', 20, 30);
         
-        this.ctx.font = '14px Arial';
-        this.ctx.fillText(`Total Faces: ${this.totalFacesCount}`, 20, 55);
-        this.ctx.fillText(`Current: ${this.faceTracker.getCurrentFaces().filter(f => f.isTracked).length}`, 20, 80);
-        this.ctx.fillText(`Minute: ${this.lastMinuteSave + 1}`, 20, 105);
+        this.ctx.font = '12px Arial';
+        this.ctx.fillText(`Total: ${this.totalFacesCount}`, 20, 50);
+        this.ctx.fillText(`Current: ${this.faceTracker.getCurrentFaces().filter(f => f.isTracked).length}`, 20, 70);
+        this.ctx.fillText(`Minute: ${this.lastMinuteSave + 1}`, 20, 90);
     }
 
     async saveMinuteData(elapsedSeconds) {

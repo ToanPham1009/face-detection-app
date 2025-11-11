@@ -94,6 +94,22 @@ class FaceDetectionApp {
         }
     }
 
+    // Trong hàm startTracking
+    async startTracking() {
+        try {
+            // Bắt đầu face detection
+            this.faceDetector.startTracking();
+
+            // Bắt đầu recording video - sử dụng video element ẩn
+            await this.videoManager.startRecording(this.faceDetector.video);
+            console.log('✅ Video recording started');
+
+        } catch (error) {
+            console.error('❌ Error starting tracking/recording:', error);
+            alert('Lỗi khi bắt đầu ghi hình: ' + error.message);
+        }
+    }
+
     initializeEventListeners() {
         // Tab navigation
         document.querySelectorAll('.tab-button').forEach(button => {
