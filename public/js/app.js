@@ -3,6 +3,9 @@ class FaceDetectionApp {
     constructor() {
         console.log('🔄 Initializing FaceDetectionApp...');
 
+        // Khởi tạo VideoManager
+        this.videoManager = new VideoManager();
+
         // Đảm bảo DOM đã sẵn sàng
         if (document.readyState === 'loading') {
             document.addEventListener('DOMContentLoaded', () => this.initialize());
@@ -14,10 +17,10 @@ class FaceDetectionApp {
     initialize() {
         console.log('🎯 Starting app initialization...');
 
-        // Kiểm tra các phần tử DOM quan trọng
+        // CẬP NHẬT: Xóa 'webcamVideo' khỏi required elements
         const requiredElements = [
             'startCamera', 'stopCamera', 'startTracking', 'stopTracking',
-            'webcamVideo', 'faceCanvas', 'currentFaces', 'totalFaces', 'trackingTime'
+            'faceCanvas', 'currentFaces', 'totalFaces', 'trackingTime'
         ];
 
         const missingElements = requiredElements.filter(id => !document.getElementById(id));
@@ -46,6 +49,74 @@ class FaceDetectionApp {
         console.log('✅ FaceDetectionApp initialized successfully');
     }
 
+    setupEventListeners() {
+        console.log('🔗 Setting up event listeners...');
+
+        // CẬP NHẬT: Sử dụng các hàm mới đã được định nghĩa
+        const elements = {
+            'startCamera': () => this.faceDetector.startCamera(),
+            'stopCamera': () => this.faceDetector.stopCamera(),
+            'startTracking': () => this.startTracking(), // Sửa: gọi this.startTracking()
+            'stopTracking': () => this.stopTracking()    // Sửa: gọi this.stopTracking()
+        };
+
+        for (const [id, handler] of Object.entries(elements)) {
+            const element = document.getElementById(id);
+            if (element) {
+                element.addEventListener('click', handler);
+                console.log(`✅ Event listener added for ${id}`);
+            } else {
+                console.warn(`⚠️ Element not found: ${id}`);
+            }
+        }
+    }
+
+    // Hàm mới: Bắt đầu tracking và recording
+    async startTracking() {
+        try {
+            // Bắt đầu face detection
+            this.faceDetector.startTracking();
+            
+            // Bắt đầu recording video - sử dụng video element ẩn từ FaceDetector
+            if (this.faceDetector.video) {
+                await this.videoManager.startRecording(this.faceDetector.video);
+                console.log('✅ Video recording started');
+            } else {
+                console.warn('⚠️ Video element not available for recording');
+            }
+            
+        } catch (error) {
+            console.error('❌ Error starting tracking/recording:', error);
+            alert('Lỗi khi bắt đầu ghi hình: ' + error.message);
+        }
+    }
+
+    // Hàm mới: Dừng tracking và recording
+    async stopTracking() {
+        try {
+            // Dừng face detection
+            this.faceDetector.stopTracking();
+            
+            // Dừng recording và lưu video
+            const videoData = await this.videoManager.stopRecording();
+            console.log('✅ Video recording stopped:', videoData);
+            
+            // Lưu session data
+            if (videoData && videoData.filename) {
+                await this.saveSessionData(videoData);
+                console.log('✅ Session data saved with video');
+            } else {
+                await this.saveSessionData({ filename: null });
+                console.log('⚠️ Session data saved without video');
+            }
+            
+        } catch (error) {
+            console.error('❌ Error stopping tracking/recording:', error);
+            // Vẫn lưu session data ngay cả khi có lỗi video
+            await this.saveSessionData({ filename: null });
+        }
+    }
+
     setupFaceDetectorCallbacks() {
         this.faceDetector.onFaceCountUpdate = (count) => {
             const element = document.getElementById('currentFaces');
@@ -70,91 +141,6 @@ class FaceDetectionApp {
                 this.switchTab(e.target.dataset.tab);
             });
         });
-    }
-
-    setupEventListeners() {
-        console.log('🔗 Setting up event listeners...');
-
-        // THÊM KIỂM TRA NULL CHO TẤT CẢ EVENT LISTENERS
-        const elements = {
-            'startCamera': () => this.faceDetector.startCamera(),
-            'stopCamera': () => this.faceDetector.stopCamera(),
-            'startTracking': () => this.faceDetector.startTracking(),
-            'stopTracking': () => this.faceDetector.stopTracking()
-        };
-
-        for (const [id, handler] of Object.entries(elements)) {
-            const element = document.getElementById(id);
-            if (element) {
-                element.addEventListener('click', handler);
-                console.log(`✅ Event listener added for ${id}`);
-            } else {
-                console.warn(`⚠️ Element not found: ${id}`);
-            }
-        }
-    }
-
-    // Trong hàm startTracking
-    async startTracking() {
-        try {
-            // Bắt đầu face detection
-            this.faceDetector.startTracking();
-
-            // Bắt đầu recording video - sử dụng video element ẩn
-            await this.videoManager.startRecording(this.faceDetector.video);
-            console.log('✅ Video recording started');
-
-        } catch (error) {
-            console.error('❌ Error starting tracking/recording:', error);
-            alert('Lỗi khi bắt đầu ghi hình: ' + error.message);
-        }
-    }
-
-    initializeEventListeners() {
-        // Tab navigation
-        document.querySelectorAll('.tab-button').forEach(button => {
-            button.addEventListener('click', (e) => {
-                this.switchTab(e.target.dataset.tab);
-            });
-        });
-
-        // Camera controls
-        document.getElementById('startCamera').addEventListener('click', () => {
-            this.faceDetector.startCamera();
-        });
-
-        document.getElementById('stopCamera').addEventListener('click', () => {
-            this.faceDetector.stopCamera();
-        });
-
-        document.getElementById('startTracking').addEventListener('click', () => {
-            this.faceDetector.startTracking();
-            this.videoManager.startRecording();
-        });
-
-        document.getElementById('stopTracking').addEventListener('click', () => {
-            this.faceDetector.stopTracking();
-            this.videoManager.stopRecording().then(videoData => {
-                this.saveSessionData(videoData);
-            }).catch(error => {
-                console.error('Error stopping recording:', error);
-                // Still save session data even if video fails
-                this.saveSessionData({ filename: null });
-            });
-        });
-
-        // Face detection events
-        this.faceDetector.onFaceCountUpdate = (count) => {
-            document.getElementById('currentFaces').textContent = count;
-        };
-
-        this.faceDetector.onTotalFacesUpdate = (count) => {
-            document.getElementById('totalFaces').textContent = count;
-        };
-
-        this.faceDetector.onTrackingTimeUpdate = (time) => {
-            document.getElementById('trackingTime').textContent = time + 's';
-        };
     }
 
     switchTab(tabName) {
@@ -216,7 +202,7 @@ class FaceDetectionApp {
         <div class="video-item-header">
             <div class="video-title">
                 <span class="session-status ${hasVideo ? 'status-recorded' : 'status-no-video'}"></span>
-                Session ${session.id.substring(0, 8)}...
+                Session ${session.id ? session.id.substring(0, 8) : 'N/A'}...
             </div>
             <div class="video-date">${new Date(session.start_time).toLocaleDateString()}</div>
         </div>
@@ -241,8 +227,8 @@ class FaceDetectionApp {
         ${!hasVideo ? '<div style="margin-top: 8px; font-size: 12px; color: #ffc107;">📹 Không có video</div>' : ''}
     `;
 
-        div.addEventListener('click', () => {
-            this.playVideo(session);
+        div.addEventListener('click', (event) => {
+            this.playVideo(session, event);
         });
 
         return div;
@@ -263,7 +249,7 @@ class FaceDetectionApp {
         }
     }
 
-    async playVideo(session) {
+    async playVideo(session, event) {
         try {
             const videoPlayer = document.getElementById('playbackVideo');
             const videoInfo = document.getElementById('videoInfo');
@@ -272,18 +258,17 @@ class FaceDetectionApp {
             document.querySelectorAll('.video-item').forEach(item => {
                 item.classList.remove('active');
             });
-            event.currentTarget.classList.add('active');
+            if (event && event.currentTarget) {
+                event.currentTarget.classList.add('active');
+            }
 
             console.log('🎬 Playing video for session:', session.id);
-            console.log('📹 Video URL:', session.video_filename);
 
-            // Load video if available - SỬA DÒNG NÀY
+            // Load video if available
             if (session.video_filename && session.video_filename !== 'null') {
-                // 🚨 SỬA: Dùng trực tiếp Cloudinary URL, không qua API
                 videoPlayer.src = session.video_filename;
                 videoPlayer.style.display = 'block';
 
-                // Thêm event listener để xử lý lỗi video
                 videoPlayer.onerror = () => {
                     console.error('❌ Video playback failed');
                     videoInfo.innerHTML = `
@@ -298,18 +283,10 @@ class FaceDetectionApp {
                 `;
                 };
 
-                videoPlayer.onloadstart = () => {
-                    console.log('🔄 Video loading started');
-                };
-
-                videoPlayer.oncanplay = () => {
-                    console.log('✅ Video can play');
-                };
-
                 videoInfo.innerHTML = `
                 <div class="info-item">
                     <span class="info-label">Session ID:</span>
-                    <span class="info-value">${session.id}</span>
+                    <span class="info-value">${session.id || 'N/A'}</span>
                 </div>
                 <div class="info-item">
                     <span class="info-label">Thời gian bắt đầu:</span>
@@ -344,15 +321,15 @@ class FaceDetectionApp {
                     <div class="icon">⚠️</div>
                     <div>
                         <h4>Không có video cho session này</h4>
-                        <p>Session "${session.id}" không có file video đi kèm.</p>
+                        <p>Session không có file video đi kèm.</p>
                         <div style="margin-top: 20px; text-align: left;">
                             <div class="info-item">
                                 <span class="info-label">Session ID:</span>
-                                <span class="info-value">${session.id}</span>
+                                <span class="info-value">${session.id || 'N/A'}</span>
                             </div>
                             <div class="info-item">
                                 <span class="info-label">Thời gian:</span>
-                                <span class="info-value">${new Date(session.start_time).toLocaleString('vi-VN')} - ${new Date(session.end_time).toLocaleTimeString('vi-VN')}</span>
+                                <span class="info-value">${new Date(session.start_time).toLocaleString('vi-VN')}</span>
                             </div>
                             <div class="info-item">
                                 <span class="info-label">Tổng khuôn mặt:</span>
@@ -380,9 +357,6 @@ class FaceDetectionApp {
 
     async saveSessionData(videoData) {
         try {
-            // THÊM random để tránh trùng ID
-            const sessionId = Date.now() + '-' + Math.random().toString(36).substr(2, 9);
-
             const sessionData = {
                 id: this.faceDetector.sessionId,
                 start_time: new Date(this.faceDetector.startTime).toISOString(),
@@ -391,6 +365,8 @@ class FaceDetectionApp {
                 duration: Math.floor((Date.now() - this.faceDetector.startTime) / 1000),
                 video_filename: videoData?.filename || null
             };
+
+            console.log('💾 Saving session data:', sessionData);
 
             const response = await fetch('/api/sessions', {
                 method: 'POST',
@@ -401,16 +377,18 @@ class FaceDetectionApp {
             });
 
             if (!response.ok) {
-                throw new Error(`HTTP error! status: ${response.status}`);
+                const errorText = await response.text();
+                throw new Error(`HTTP error! status: ${response.status}, message: ${errorText}`);
             }
 
-            console.log('Session saved successfully');
+            const result = await response.json();
+            console.log('✅ Session saved successfully:', result);
 
             // Reload video history
             this.loadVideoHistory();
 
         } catch (error) {
-            console.error('Error saving session data:', error);
+            console.error('❌ Error saving session data:', error);
         }
     }
 }
