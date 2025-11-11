@@ -77,7 +77,7 @@
                     <div class="status-indicator"></div>
                     <span>🔴 Đang ghi nhận dữ liệu...</span>
                 </div>
-                
+
                 <div class="controls">
                     <button id="startCamera" class="btn btn-primary">📷 Bật Camera</button>
                     <button id="stopCamera" class="btn btn-danger" disabled>⏹️ Tắt Camera</button>
@@ -85,8 +85,9 @@
                     <button id="stopTracking" class="btn btn-warning" disabled>⏹️ Dừng Theo dõi</button>
                 </div>
 
+                <!-- Chỉ hiển thị 1 màn hình duy nhất -->
                 <div class="camera-container">
-                    <video id="webcamVideo" autoplay playsinline></video>
+                    <video id="webcamVideo" autoplay playsinline muted></video>
                     <canvas id="faceCanvas"></canvas>
                 </div>
 
@@ -133,7 +134,8 @@
                                     <div class="icon">📹</div>
                                     <div>
                                         <h4>Chưa có video được chọn</h4>
-                                        <p>Vui lòng chọn một session từ danh sách bên trái để xem video và thông tin chi tiết.</p>
+                                        <p>Vui lòng chọn một session từ danh sách bên trái để xem video và thông tin chi
+                                            tiết.</p>
                                     </div>
                                 </div>
                             </div>
