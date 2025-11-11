@@ -19,7 +19,7 @@
             <form id="loginFormElement">
                 <input type="email" id="loginEmail" placeholder="Email" required>
                 <input type="password" id="loginPassword" placeholder="Mật khẩu" required>
-                <button type="submit" id="loginButton">
+                <button type="submit" id="loginButton" class="btn btn-primary">
                     <span id="loginText">Đăng nhập</span>
                     <span id="loginLoading" class="loading" style="display: none;"></span>
                 </button>
@@ -38,7 +38,7 @@
                 <input type="email" id="registerEmail" placeholder="Email" required>
                 <input type="password" id="registerPassword" placeholder="Mật khẩu (ít nhất 6 ký tự)" required
                     minlength="6">
-                <button type="submit" id="registerButton">
+                <button type="submit" id="registerButton" class="btn btn-primary">
                     <span id="registerText">Đăng ký</span>
                     <span id="registerLoading" class="loading" style="display: none;"></span>
                 </button>
@@ -73,37 +73,57 @@
 
             <!-- Live Detection Tab -->
             <div class="tab-content active" id="live-tab">
-                <div class="camera-controls">
-                    <button id="startCamera">📷 Bật Camera</button>
-                    <button id="stopCamera">⏹️ Tắt Camera</button>
-                    <button id="startTracking">🎬 Bắt đầu Theo dõi</button>
-                    <button id="stopTracking">⏹️ Dừng Theo dõi</button>
+                <div id="recordingStatus" class="recording-status">
+                    <div class="status-indicator"></div>
+                    <span>🔴 Đang ghi nhận dữ liệu...</span>
+                </div>
+                
+                <div class="controls">
+                    <button id="startCamera" class="btn btn-primary">📷 Bật Camera</button>
+                    <button id="stopCamera" class="btn btn-danger" disabled>⏹️ Tắt Camera</button>
+                    <button id="startTracking" class="btn btn-success" disabled>🎬 Bắt đầu Theo dõi</button>
+                    <button id="stopTracking" class="btn btn-warning" disabled>⏹️ Dừng Theo dõi</button>
                 </div>
 
-                <div class="video-container">
+                <div class="camera-container">
                     <video id="webcamVideo" autoplay playsinline></video>
                     <canvas id="faceCanvas"></canvas>
                 </div>
 
                 <div class="stats">
-                    <div>Khuôn mặt hiện tại: <span id="currentFaces">0</span></div>
-                    <div>Tổng khuôn mặt: <span id="totalFaces">0</span></div>
-                    <div>Thời gian theo dõi: <span id="trackingTime">0s</span></div>
+                    <div class="stat-card">
+                        <div class="stat-label">Khuôn mặt hiện tại</div>
+                        <div class="stat-value" id="currentFaces">0</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-label">Tổng khuôn mặt</div>
+                        <div class="stat-value" id="totalFaces">0</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-label">Thời gian theo dõi</div>
+                        <div class="stat-value" id="trackingTime">0s</div>
+                    </div>
                 </div>
             </div>
 
             <!-- Video History Tab -->
             <div class="tab-content" id="history-tab">
-                <div class="history-container">
-                    <div class="video-list-container">
-                        <h3>📋 Danh sách video đã lưu</h3>
-                        <div id="videoList" class="video-list">
-                            <!-- Video items sẽ được load ở đây -->
+                <div class="video-history">
+                    <div class="video-list">
+                        <div class="video-list-header">
+                            <h3>📋 Danh sách video đã lưu</h3>
+                        </div>
+                        <div class="video-list-content">
+                            <div id="videoList" class="video-list">
+                                <!-- Video items sẽ được load ở đây -->
+                            </div>
                         </div>
                     </div>
 
                     <div class="video-player-container">
-                        <h3>🎬 Video Player</h3>
+                        <div class="video-player-header">
+                            <h3>🎬 Video Player</h3>
+                        </div>
                         <div class="video-player-content">
                             <video id="playbackVideo" controls style="display: none;">
                                 Your browser does not support the video tag.
@@ -113,8 +133,7 @@
                                     <div class="icon">📹</div>
                                     <div>
                                         <h4>Chưa có video được chọn</h4>
-                                        <p>Vui lòng chọn một session từ danh sách bên trái để xem video và thông tin chi
-                                            tiết.</p>
+                                        <p>Vui lòng chọn một session từ danh sách bên trái để xem video và thông tin chi tiết.</p>
                                     </div>
                                 </div>
                             </div>
@@ -131,18 +150,15 @@
             constructor() {
                 this.token = localStorage.getItem('authToken');
                 this.user = JSON.parse(localStorage.getItem('user') || 'null');
-
                 this.initializeAuth();
             }
 
             initializeAuth() {
-                // 🎯 QUAN TRỌNG: Kiểm tra nếu đã login thì show app, không thì show auth
                 if (this.token && this.user) {
                     this.showMainApp();
                 } else {
                     this.showAuth();
                 }
-
                 this.setupEventListeners();
             }
 
@@ -178,8 +194,6 @@
                 document.getElementById('loginForm').classList.remove('active');
                 document.getElementById('registerForm').classList.remove('active');
                 document.getElementById(formType + 'Form').classList.add('active');
-
-                // Clear errors
                 this.clearErrors();
             }
 
@@ -226,10 +240,8 @@
                     if (response.ok) {
                         this.token = data.token;
                         this.user = data.user;
-
                         localStorage.setItem('authToken', this.token);
                         localStorage.setItem('user', JSON.stringify(this.user));
-
                         this.showMainApp();
                     } else {
                         errorElement.textContent = data.error || 'Đăng nhập thất bại';
@@ -262,13 +274,10 @@
                     const data = await response.json();
 
                     if (response.ok) {
-                        // Auto login after register
                         this.token = data.token;
                         this.user = data.user;
-
                         localStorage.setItem('authToken', this.token);
                         localStorage.setItem('user', JSON.stringify(this.user));
-
                         this.showMainApp();
                     } else {
                         errorElement.textContent = data.error || 'Đăng ký thất bại';
@@ -281,57 +290,30 @@
             }
 
             showMainApp() {
-                // Ẩn auth, hiện app chính
                 document.getElementById('authContainer').style.display = 'none';
                 document.getElementById('mainApp').style.display = 'block';
-
-                // Hiển thị tên user
                 document.getElementById('usernameDisplay').textContent = this.user.username;
 
-                // 🆕 KHỞI TẠO APP CHÍNH
-                // Kiểm tra nếu app chưa được khởi tạo
                 if (typeof window.faceDetectionApp === 'undefined') {
                     console.log('🚀 Initializing main application...');
-                    // Trong hàm initializeMainApp()
-                    console.log('🔄 Starting main app initialization...');
-                    console.log('FaceDetectionApp constructor:', typeof FaceDetectionApp);
-                    console.log('DOM elements:', {
-                        startCamera: document.getElementById('startCamera'),
-                        stopCamera: document.getElementById('stopCamera'),
-                        startTracking: document.getElementById('startTracking'),
-                        stopTracking: document.getElementById('stopTracking')
-                    });
-
-                    // Đợi DOM render xong
                     setTimeout(() => {
                         try {
-                            // 🆕 KHỞI TẠO APP CHÍNH
                             window.faceDetectionApp = new FaceDetectionApp();
                             console.log('✅ Main app initialized successfully');
-
-                            // 🆕 KÍCH HOẠT TAB MẶC ĐỊNH
                             window.faceDetectionApp.switchTab('live');
-
-                            // 🆕 LOAD DỮ LIỆU BAN ĐẦU
                             window.faceDetectionApp.loadVideoHistory();
-
                         } catch (error) {
                             console.error('❌ Error initializing main app:', error);
                         }
-                    }, 300); // Tăng thời gian chờ
+                    }, 300);
                 }
             }
 
             showAuth() {
-                // Ẩn app, hiện auth
                 document.getElementById('mainApp').style.display = 'none';
                 document.getElementById('authContainer').style.display = 'block';
-
-                // Reset forms
                 this.showForm('login');
                 this.clearErrors();
-
-                // Clear input fields
                 document.getElementById('loginFormElement').reset();
                 document.getElementById('registerFormElement').reset();
             }

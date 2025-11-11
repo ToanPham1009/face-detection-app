@@ -1,22 +1,97 @@
 // Main application controller
 class FaceDetectionApp {
     constructor() {
-        console.log('🔄 FaceDetectionApp constructor called');
-        
-        // 🆕 DELAY khởi tạo để đảm bảo DOM đã sẵn sàng
-        setTimeout(() => {
-            try {
-                this.faceDetector = new FaceDetector();
-                this.videoManager = new VideoManager();
-                this.currentTab = 'live';
+        console.log('🔄 Initializing FaceDetectionApp...');
 
-                this.initializeEventListeners();
-                this.loadVideoHistory();
-                console.log('✅ FaceDetectionApp initialized successfully');
-            } catch (error) {
-                console.error('❌ Error initializing FaceDetectionApp:', error);
+        // Đảm bảo DOM đã sẵn sàng
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', () => this.initialize());
+        } else {
+            this.initialize();
+        }
+    }
+
+    initialize() {
+        console.log('🎯 Starting app initialization...');
+
+        // Kiểm tra các phần tử DOM quan trọng
+        const requiredElements = [
+            'startCamera', 'stopCamera', 'startTracking', 'stopTracking',
+            'webcamVideo', 'faceCanvas', 'currentFaces', 'totalFaces', 'trackingTime'
+        ];
+
+        const missingElements = requiredElements.filter(id => !document.getElementById(id));
+
+        if (missingElements.length > 0) {
+            console.error('❌ Missing required DOM elements:', missingElements);
+            // Thử lại sau 1 giây
+            setTimeout(() => this.initialize(), 1000);
+            return;
+        }
+
+        console.log('✅ All DOM elements found');
+
+        // Khởi tạo FaceDetector
+        this.faceDetector = new FaceDetector();
+
+        // Setup event listeners
+        this.setupEventListeners();
+
+        // Setup face detector callbacks
+        this.setupFaceDetectorCallbacks();
+
+        // Setup tab switching
+        this.setupTabSwitching();
+
+        console.log('✅ FaceDetectionApp initialized successfully');
+    }
+
+    setupFaceDetectorCallbacks() {
+        this.faceDetector.onFaceCountUpdate = (count) => {
+            const element = document.getElementById('currentFaces');
+            if (element) element.textContent = count;
+        };
+
+        this.faceDetector.onTotalFacesUpdate = (count) => {
+            const element = document.getElementById('totalFaces');
+            if (element) element.textContent = count;
+        };
+
+        this.faceDetector.onTrackingTimeUpdate = (time) => {
+            const element = document.getElementById('trackingTime');
+            if (element) element.textContent = time + 's';
+        };
+    }
+
+    setupTabSwitching() {
+        const tabButtons = document.querySelectorAll('.tab-button');
+        tabButtons.forEach(button => {
+            button.addEventListener('click', (e) => {
+                this.switchTab(e.target.dataset.tab);
+            });
+        });
+    }
+
+    setupEventListeners() {
+        console.log('🔗 Setting up event listeners...');
+
+        // THÊM KIỂM TRA NULL CHO TẤT CẢ EVENT LISTENERS
+        const elements = {
+            'startCamera': () => this.faceDetector.startCamera(),
+            'stopCamera': () => this.faceDetector.stopCamera(),
+            'startTracking': () => this.faceDetector.startTracking(),
+            'stopTracking': () => this.faceDetector.stopTracking()
+        };
+
+        for (const [id, handler] of Object.entries(elements)) {
+            const element = document.getElementById(id);
+            if (element) {
+                element.addEventListener('click', handler);
+                console.log(`✅ Event listener added for ${id}`);
+            } else {
+                console.warn(`⚠️ Element not found: ${id}`);
             }
-        }, 500);
+        }
     }
 
     initializeEventListeners() {
@@ -67,18 +142,22 @@ class FaceDetectionApp {
     }
 
     switchTab(tabName) {
-        // Update tab buttons
-        document.querySelectorAll('.tab-button').forEach(button => {
-            button.classList.toggle('active', button.dataset.tab === tabName);
-        });
+        // Ẩn tất cả tab content
+        const tabContents = document.querySelectorAll('.tab-content');
+        tabContents.forEach(tab => tab.classList.remove('active'));
 
-        // Update tab content
-        document.querySelectorAll('.tab-content').forEach(content => {
-            content.classList.toggle('active', content.id === `${tabName}-tab`);
-        });
+        // Bỏ active tất cả tab buttons
+        const tabButtons = document.querySelectorAll('.tab-button');
+        tabButtons.forEach(button => button.classList.remove('active'));
 
-        this.currentTab = tabName;
+        // Hiển thị tab được chọn
+        const selectedTab = document.getElementById(`${tabName}-tab`);
+        const selectedButton = document.querySelector(`[data-tab="${tabName}"]`);
 
+        if (selectedTab) selectedTab.classList.add('active');
+        if (selectedButton) selectedButton.classList.add('active');
+
+        // Nếu chuyển sang tab history, load dữ liệu
         if (tabName === 'history') {
             this.loadVideoHistory();
         }
