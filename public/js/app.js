@@ -393,7 +393,3 @@ class FaceDetectionApp {
     }
 }
 
-// Initialize application when DOM is loaded
-document.addEventListener('DOMContentLoaded', () => {
-    window.faceDetectionApp = new FaceDetectionApp();
-});

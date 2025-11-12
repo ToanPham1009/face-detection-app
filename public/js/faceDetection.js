@@ -28,6 +28,10 @@ class FaceDetector {
         this.video.muted = true;
         this.video.style.display = 'none';
 
+        // Thêm biến để vẽ video ngay cả khi không tracking
+        this.isCameraOn = false;
+        this.videoDrawInterval = null;
+
         this.loadFaceDetectionModel();
     }
 
@@ -80,12 +84,15 @@ class FaceDetector {
             
             this.video.srcObject = this.stream;
             
-            // Khi video đã load metadata, khởi tạo canvas
             this.video.addEventListener('loadedmetadata', () => {
                 this.initializeCanvas();
                 this.video.play(); // Bắt đầu play video
+                
+                // 🆕 BẮT ĐẦU VẼ VIDEO FRAME NGAY KHI CAMERA BẬT
+                this.startVideoDrawing();
             });
             
+            this.isCameraOn = true;
             this.updateButtonStates();
             console.log('Camera started');
         } catch (error) {
@@ -104,6 +111,7 @@ class FaceDetector {
             this.ctx.translate(this.canvas.width, 0);
             this.ctx.scale(-1, 1);
             
+            this.canvasInitialized = true;
             console.log('✅ Canvas initialized with dimensions:', this.canvas.width, 'x', this.canvas.height);
         }
     }
@@ -140,69 +148,106 @@ class FaceDetector {
                 this.stopTracking();
             }
             
+            // 🆕 DỪNG VẼ VIDEO FRAME
+            this.stopVideoDrawing();
+            
             // Clear canvas
             this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
             
             // Reset transform
             this.ctx.setTransform(1, 0, 0, 1, 0, 0);
             
+            this.isCameraOn = false;
             this.updateButtonStates();
             console.log('Camera stopped');
         }
     }
 
-    startTracking() {
-        // Kiểm tra DOM elements trước
-        if (!this.video || !this.canvas) {
-            console.error('❌ Video or Canvas elements not found');
-            alert('Camera elements not ready. Please try again.');
+    // 🆕 HÀM MỚI: Bắt đầu vẽ video frame
+    startVideoDrawing() {
+        if (this.videoDrawInterval) {
+            clearInterval(this.videoDrawInterval);
+        }
+        
+        // Vẽ video frame với tốc độ 30 FPS
+        this.videoDrawInterval = setInterval(() => {
+            this.drawVideoFrameOnly(); // Chỉ vẽ video, không detection
+        }, 1000 / 30); // 30 FPS
+    }
+
+    // 🆕 HÀM MỚI: Dừng vẽ video frame
+    stopVideoDrawing() {
+        if (this.videoDrawInterval) {
+            clearInterval(this.videoDrawInterval);
+            this.videoDrawInterval = null;
+        }
+    }
+
+    // 🆕 HÀM MỚI: Chỉ vẽ video frame (không detection)
+    drawVideoFrameOnly() {
+        if (!this.isCameraOn || this.video.videoWidth === 0 || this.video.videoHeight === 0) {
             return;
         }
+        
+        try {
+            // Vẽ video frame
+            this.ctx.drawImage(
+                this.video, 
+                0, 0, 
+                this.canvas.width, 
+                this.canvas.height
+            );
+        } catch (error) {
+            console.error('Error drawing video frame:', error);
+        }
+    }
 
+    startTracking() {
         if (!this.model) {
             alert('Mô hình nhận diện khuôn mặt chưa sẵn sàng. Vui lòng đợi...');
             return;
         }
-
+        
         if (!this.stream) {
             alert('Camera chưa được bật. Vui lòng bật camera trước.');
             return;
         }
-
+        
         this.isTracking = true;
+        this.isDetectionRunning = false;
         this.sessionId = Date.now().toString();
         this.startTime = Date.now();
         this.totalFacesCount = 0;
         this.uniqueFaces.clear();
         this.faceTracker.reset();
-
+        
         // Reset biến theo dõi phút
         this.minuteIntervals = [];
         this.lastMinuteSave = 0;
         this.minuteFaceCounts.clear();
-
-        // Show recording status - THÊM KIỂM TRA NULL
+        
+        // Show recording status
         const recordingStatus = document.getElementById('recordingStatus');
         if (recordingStatus) {
             recordingStatus.classList.add('active');
         }
-
-        // Start face detection loop
-        this.trackingInterval = setInterval(() => {
-            this.detectFaces();
-        }, 200);
-
+        
+        // 🆕 DỪNG VẼ VIDEO THÔNG THƯỜNG, CHUYỂN SANG DETECTION MODE
+        this.stopVideoDrawing();
+        
+        // Bắt đầu detection loop
+        this.startDetectionLoop();
+        
         // Update tracking time và kiểm tra lưu theo phút
         this.timeInterval = setInterval(() => {
             if (this.isTracking && this.onTrackingTimeUpdate) {
                 const elapsedSeconds = Math.floor((Date.now() - this.startTime) / 1000);
                 this.onTrackingTimeUpdate(elapsedSeconds);
-
-                // Kiểm tra và lưu dữ liệu mỗi phút
+                
                 this.checkAndSaveMinuteData(elapsedSeconds);
             }
         }, 1000);
-
+        
         this.updateButtonStates();
         console.log('Face tracking started');
     }
@@ -291,40 +336,39 @@ class FaceDetector {
 
     stopTracking() {
         if (!this.isTracking) return;
-
+        
         this.isTracking = false;
-
-        // Lưu dữ liệu phút cuối cùng (nếu có)
+        this.isDetectionRunning = false;
+        
+        // Lưu dữ liệu phút cuối cùng
         const elapsedSeconds = Math.floor((Date.now() - this.startTime) / 1000);
         const currentMinute = Math.floor(elapsedSeconds / 60);
-
-        // Nếu có dữ liệu chưa lưu của phút cuối
+        
         if (currentMinute >= this.lastMinuteSave) {
             this.saveCurrentMinuteData();
         }
-
-        // Lưu dữ liệu tổng thể
+        
         this.saveFinalMinuteData(elapsedSeconds);
-
-        // Hide recording status - THÊM KIỂM TRA NULL
+        
+        // Hide recording status
         const recordingStatus = document.getElementById('recordingStatus');
         if (recordingStatus) {
             recordingStatus.classList.remove('active');
         }
-
-        if (this.trackingInterval) {
-            clearInterval(this.trackingInterval);
-            this.trackingInterval = null;
-        }
-
+        
+        // Dọn dẹp intervals
         if (this.timeInterval) {
             clearInterval(this.timeInterval);
             this.timeInterval = null;
         }
-
+        
+        // 🆕 QUAY LẠI VẼ VIDEO THÔNG THƯỜNG KHI DỪNG TRACKING
+        if (this.isCameraOn) {
+            this.startVideoDrawing();
+        }
+        
         this.updateButtonStates();
         console.log('Face tracking stopped');
-        console.log('Minute intervals saved:', this.minuteIntervals);
     }
 
     // Hàm mới: Lưu dữ liệu tổng thể khi kết thúc
@@ -345,7 +389,17 @@ class FaceDetector {
         if (!this.isTracking || !this.model || !this.stream) return;
         
         try {
-            // Vẽ video frame lên canvas
+            // Kiểm tra video đã sẵn sàng chưa
+            if (this.video.videoWidth === 0 || this.video.videoHeight === 0) {
+                return;
+            }
+            
+            // Khởi tạo canvas dimensions nếu chưa
+            if (!this.canvasInitialized) {
+                this.initializeCanvas();
+            }
+            
+            // 🆕 VẼ VIDEO FRAME (trong detection mode)
             this.drawVideoFrame();
             
             const predictions = await this.model.estimateFaces(this.video, false);
@@ -388,6 +442,9 @@ class FaceDetector {
         if (this.video.videoWidth === 0 || this.video.videoHeight === 0) return;
         
         try {
+            // Clear canvas trước khi vẽ
+            this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
+            
             // Vẽ video frame
             this.ctx.drawImage(
                 this.video, 
@@ -399,6 +456,7 @@ class FaceDetector {
             console.error('Error drawing video frame:', error);
         }
     }
+
 
     // Vẽ thông tin khi không có khuôn mặt
     drawNoFacesInfo() {
@@ -550,18 +608,17 @@ class FaceDetector {
     updateButtonStates() {
         const hasCamera = !!this.stream;
         const isTracking = this.isTracking;
-
-        // THÊM KIỂM TRA NULL CHO TẤT CẢ BUTTONS
+        
         const buttons = {
             'startCamera': document.getElementById('startCamera'),
             'stopCamera': document.getElementById('stopCamera'),
             'startTracking': document.getElementById('startTracking'),
             'stopTracking': document.getElementById('stopTracking')
         };
-
+        
         for (const [id, button] of Object.entries(buttons)) {
             if (button) {
-                switch (id) {
+                switch(id) {
                     case 'startCamera':
                         button.disabled = hasCamera;
                         break;
