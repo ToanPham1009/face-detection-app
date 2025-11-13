@@ -177,7 +177,7 @@ class FaceDetector {
         
         // Vẽ video frame với tốc độ 30 FPS
         this.videoDrawInterval = setInterval(() => {
-            this.drawVideoFrameOnly(); // Chỉ vẽ video, không detection
+            this.drawVideoFrame(); // Chỉ vẽ video, không detection
         }, 1000 / 30); // 30 FPS
     }
 
