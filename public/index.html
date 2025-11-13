@@ -141,6 +141,26 @@
                         </div>
                     </div>
                 </div>
+                <!-- Modal xác nhận xóa -->
+                <div id="deleteModal" class="modal">
+                    <div class="modal-content">
+                        <div class="modal-header">
+                            <h3>🗑️ Xóa Session</h3>
+                            <span class="close">&times;</span>
+                        </div>
+                        <div class="modal-body">
+                            <p>Bạn có chắc chắn muốn xóa session này không?</p>
+                            <div class="session-info" id="deleteSessionInfo">
+                                <!-- Thông tin session sẽ được điền ở đây -->
+                            </div>
+                            <p class="warning-text">⚠️ Hành động này không thể hoàn tác!</p>
+                        </div>
+                        <div class="modal-footer">
+                            <button id="confirmDelete" class="btn btn-danger">Xóa</button>
+                            <button id="cancelDelete" class="btn btn-secondary">Hủy</button>
+                        </div>
+                    </div>
+                </div>
             </div>
         </div>
     </div>
