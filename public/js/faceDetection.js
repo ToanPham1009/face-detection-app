@@ -255,7 +255,6 @@ class FaceDetector {
         }
 
         this.isTracking = true;
-        this.isDetectionRunning = false; // Reset flag
         this.sessionId = Date.now().toString();
         this.startTime = Date.now();
         this.totalFacesCount = 0;
@@ -273,11 +272,8 @@ class FaceDetector {
             recordingStatus.classList.add('active');
         }
 
-        // 🆕 DỪNG VẼ VIDEO THÔNG THƯỜNG, CHUYỂN SANG DETECTION MODE
-        this.stopVideoDrawing();
-
-        // 🆕 Bắt đầu detection loop
-        this.startDetectionLoop();
+        // 🆕 KHÔNG cần dừng/khởi động lại detection loop
+        // Detection loop đã chạy từ khi bật camera
 
         // Update tracking time và kiểm tra lưu theo phút
         this.timeInterval = setInterval(() => {
@@ -379,7 +375,6 @@ class FaceDetector {
         if (!this.isTracking) return;
 
         this.isTracking = false;
-        this.isDetectionRunning = false;
 
         // Lưu dữ liệu phút cuối cùng
         const elapsedSeconds = Math.floor((Date.now() - this.startTime) / 1000);
@@ -397,17 +392,28 @@ class FaceDetector {
             recordingStatus.classList.remove('active');
         }
 
-        // Dọn dẹp intervals
+        // Dọn dẹp intervals (chỉ intervals liên quan đến tracking thời gian)
         if (this.timeInterval) {
             clearInterval(this.timeInterval);
             this.timeInterval = null;
         }
 
-        // 🆕 KHÔNG quay lại vẽ video thông thường, VẪN TIẾP TỤC DETECTION
-        // Chỉ dừng tracking thống kê, không dừng detection
+        // 🆕 KHÔNG dừng detection loop, chỉ dừng tracking thống kê
+        // Detection vẫn tiếp tục chạy, vẫn vẽ khung khuôn mặt
+
+        // Reset các biến thống kê về 0 để hiển thị
+        if (this.onFaceCountUpdate) {
+            this.onFaceCountUpdate(0);
+        }
+        if (this.onTotalFacesUpdate) {
+            this.onTotalFacesUpdate(0);
+        }
+        if (this.onTrackingTimeUpdate) {
+            this.onTrackingTimeUpdate(0);
+        }
 
         this.updateButtonStates();
-        console.log('Face tracking stopped (still detecting faces)');
+        console.log('Face tracking stopped (detection continues)');
     }
 
     // Hàm mới: Lưu dữ liệu tổng thể khi kết thúc
@@ -425,7 +431,7 @@ class FaceDetector {
     }
 
     async detectFaces() {
-        // Cho phép detection ngay cả khi không tracking, nhưng chỉ vẽ khung
+        // Cho phép detection ngay cả khi không tracking
         if (!this.model || !this.stream) return;
 
         try {
@@ -445,6 +451,26 @@ class FaceDetector {
             const predictions = await this.model.estimateFaces(this.video, false);
 
             if (predictions.length > 0) {
+                // LUÔN cập nhật face tracker để vẽ khung chính xác
+                const trackedFaces = this.faceTracker.update(predictions.map(pred => {
+                    const start = pred.topLeft;
+                    const end = pred.bottomRight;
+                    const centerX = (start[0] + end[0]) / 2;
+                    const centerY = (start[1] + end[1]) / 2;
+                    const width = end[0] - start[0];
+                    const height = end[1] - start[1];
+
+                    return {
+                        x: centerX,
+                        y: centerY,
+                        width: width,
+                        height: height,
+                        landmarks: pred.landmarks,
+                        boundingBox: { start, end },
+                        confidence: pred.probability ? pred.probability[0] : 1.0
+                    };
+                }));
+
                 // Chỉ update thống kê nếu đang tracking
                 if (this.isTracking) {
                     if (this.onFaceCountUpdate) {
@@ -452,7 +478,7 @@ class FaceDetector {
                     }
 
                     // Track unique faces chỉ khi đang tracking
-                    const newFacesCount = this.trackUniqueFaces(predictions);
+                    const newFacesCount = this.trackUniqueFaces(trackedFaces);
 
                     if (newFacesCount > 0 && this.onTotalFacesUpdate) {
                         this.onTotalFacesUpdate(this.totalFacesCount);
@@ -460,29 +486,49 @@ class FaceDetector {
                 }
 
                 // VẼ KHUNG KHUÔN MẶT (luôn vẽ dù có tracking hay không)
-                this.drawFaceDetections(predictions);
+                this.drawFaceDetections(predictions, trackedFaces);
             } else {
+                // LUÔN cập nhật face tracker ngay cả khi không có khuôn mặt
+                this.faceTracker.update([]);
+
                 // Chỉ update thống kê nếu đang tracking
                 if (this.isTracking && this.onFaceCountUpdate) {
                     this.onFaceCountUpdate(0);
                 }
 
-                this.faceTracker.update([]);
-
                 // Vẽ thông tin khi không có khuôn mặt
                 this.drawNoFacesInfo();
             }
 
-            // Vẽ thông tin tracking (chỉ khi đang tracking)
-            if (this.isTracking) {
-                this.drawTrackingInfo();
-            } else {
-                // Vẽ thông tin camera thông thường khi không tracking
-                this.drawCameraInfo();
-            }
+            // Vẽ thông tin trạng thái
+            this.drawStatusInfo();
 
         } catch (error) {
             console.error('Error detecting faces:', error);
+        }
+    }
+
+    drawStatusInfo() {
+        // Vẽ background cho text
+        this.ctx.fillStyle = 'rgba(0, 0, 0, 0.6)';
+        this.ctx.fillRect(10, 10, 200, 80);
+
+        // Text information
+        this.ctx.fillStyle = '#ffffff';
+        this.ctx.font = 'bold 14px Arial';
+        this.ctx.textAlign = 'left';
+
+        if (this.isTracking) {
+            this.ctx.fillText('🎭 Face Tracking', 20, 30);
+            this.ctx.font = '12px Arial';
+            this.ctx.fillText(`Total: ${this.totalFacesCount}`, 20, 50);
+            this.ctx.fillText(`Current: ${this.faceTracker.getCurrentFaces().filter(f => f.isTracked).length}`, 20, 70);
+            this.ctx.fillText(`Minute: ${this.lastMinuteSave + 1}`, 20, 90);
+        } else {
+            this.ctx.fillText('📷 Camera Mode', 20, 30);
+            this.ctx.font = '12px Arial';
+            this.ctx.fillText(`Faces: ${this.faceTracker.getTrackedFacesCount()}`, 20, 50);
+            this.ctx.fillText('⏸️ Tracking Paused', 20, 70);
         }
     }
 
@@ -572,8 +618,12 @@ class FaceDetector {
     }
 
     // Vẽ detection boxes và landmarks
-    drawFaceDetections(predictions) {
-        const trackedFaces = this.faceTracker.getCurrentFaces();
+    // Vẽ detection boxes và landmarks với trackedFaces
+    drawFaceDetections(predictions, trackedFaces = null) {
+        // Nếu không có trackedFaces được truyền vào, lấy từ tracker
+        if (!trackedFaces) {
+            trackedFaces = this.faceTracker.getCurrentFaces();
+        }
 
         predictions.forEach((prediction) => {
             const start = prediction.topLeft;
@@ -600,16 +650,16 @@ class FaceDetector {
             }
 
             // Vẽ khung với màu sắc khác nhau
-            if (isTracked) {
-                this.ctx.strokeStyle = '#00ff00'; // Xanh lá - đang tracked
+            if (this.isTracking && isTracked) {
+                this.ctx.strokeStyle = '#00ff00'; // Xanh lá - đang tracked trong session
                 this.ctx.fillStyle = '#00ff00';
                 this.ctx.lineWidth = 3;
             } else if (faceId !== null) {
-                this.ctx.strokeStyle = '#ffff00'; // Vàng - đã biết
+                this.ctx.strokeStyle = '#ffff00'; // Vàng - được detect nhưng không tracking
                 this.ctx.fillStyle = '#ffff00';
                 this.ctx.lineWidth = 2;
             } else {
-                this.ctx.strokeStyle = '#ff0000'; // Đỏ - mới
+                this.ctx.strokeStyle = '#ff0000'; // Đỏ - mới detect
                 this.ctx.fillStyle = '#ff0000';
                 this.ctx.lineWidth = 2;
             }
