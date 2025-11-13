@@ -157,7 +157,7 @@ class FaceDetector {
                 this.stopTracking();
             }
 
-            // 🆕 DỪNG VẼ VIDEO FRAME
+            // 🆕 DỪNG VIDEO DRAWING NHƯNG KHÔNG DỪNG DETECTION LOOP
             this.stopVideoDrawing();
 
             // Clear canvas
@@ -167,6 +167,7 @@ class FaceDetector {
             this.ctx.setTransform(1, 0, 0, 1, 0, 0);
 
             this.isCameraOn = false;
+            this.isDetectionRunning = false; // Dừng detection loop khi tắt camera
             this.updateButtonStates();
             console.log('Camera stopped');
         }
@@ -193,13 +194,15 @@ class FaceDetector {
     }
 
     // 🆕 THÊM HÀM startDetectionLoop
+    // 🆕 HÀM MỚI: Bắt đầu detection loop
     startDetectionLoop() {
         if (this.isDetectionRunning) return;
 
         this.isDetectionRunning = true;
+        this.lastDetectionTime = 0;
 
         const detectionLoop = async () => {
-            if (!this.isCameraOn) {
+            if (!this.isCameraOn || !this.isDetectionRunning) {
                 this.isDetectionRunning = false;
                 return;
             }
@@ -208,11 +211,17 @@ class FaceDetector {
             // Chỉ chạy detection nếu đã đủ thời gian giữa các frame
             if (currentTime - this.lastDetectionTime >= this.minDetectionInterval) {
                 this.lastDetectionTime = currentTime;
-                await this.detectFaces();
+                try {
+                    await this.detectFaces();
+                } catch (error) {
+                    console.error('Error in detection loop:', error);
+                    this.isDetectionRunning = false;
+                    return;
+                }
             }
 
             // Tiếp tục loop khi camera đang bật
-            if (this.isCameraOn) {
+            if (this.isCameraOn && this.isDetectionRunning) {
                 requestAnimationFrame(detectionLoop);
             } else {
                 this.isDetectionRunning = false;
@@ -398,8 +407,16 @@ class FaceDetector {
             this.timeInterval = null;
         }
 
-        // 🆕 KHÔNG dừng detection loop, chỉ dừng tracking thống kê
-        // Detection vẫn tiếp tục chạy, vẫn vẽ khung khuôn mặt
+        // 🆕 ĐẢM BẢO VIDEO VẪN HIỂN THỊ
+        if (this.video && this.video.srcObject) {
+            // Video stream vẫn active, tiếp tục play
+            this.video.play().catch(e => console.log('Video play error:', e));
+        }
+
+        // 🆕 VẼ LẠI VIDEO FRAME ĐỂ ĐẢM BẢO KHÔNG BỊ ĐEN
+        setTimeout(() => {
+            this.drawVideoFrame();
+        }, 100);
 
         // Reset các biến thống kê về 0 để hiển thị
         if (this.onFaceCountUpdate) {
@@ -435,6 +452,9 @@ class FaceDetector {
         if (!this.model || !this.stream) return;
 
         try {
+            // 🆕 ĐẢM BẢO VIDEO LUÔN HIỂN THỊ
+            this.ensureVideoDisplay();
+
             // Kiểm tra video đã sẵn sàng chưa
             if (this.video.videoWidth === 0 || this.video.videoHeight === 0) {
                 return;
@@ -450,27 +470,30 @@ class FaceDetector {
 
             const predictions = await this.model.estimateFaces(this.video, false);
 
+            // Chuẩn bị faces data cho tracker
+            const facesData = predictions.map(pred => {
+                const start = pred.topLeft;
+                const end = pred.bottomRight;
+                const centerX = (start[0] + end[0]) / 2;
+                const centerY = (start[1] + end[1]) / 2;
+                const width = end[0] - start[0];
+                const height = end[1] - start[1];
+
+                return {
+                    x: centerX,
+                    y: centerY,
+                    width: width,
+                    height: height,
+                    landmarks: pred.landmarks,
+                    boundingBox: { start, end },
+                    confidence: pred.probability ? pred.probability[0] : 1.0
+                };
+            });
+
+            // LUÔN cập nhật face tracker để vẽ khung chính xác
+            const trackedFaces = this.faceTracker.update(facesData);
+
             if (predictions.length > 0) {
-                // LUÔN cập nhật face tracker để vẽ khung chính xác
-                const trackedFaces = this.faceTracker.update(predictions.map(pred => {
-                    const start = pred.topLeft;
-                    const end = pred.bottomRight;
-                    const centerX = (start[0] + end[0]) / 2;
-                    const centerY = (start[1] + end[1]) / 2;
-                    const width = end[0] - start[0];
-                    const height = end[1] - start[1];
-
-                    return {
-                        x: centerX,
-                        y: centerY,
-                        width: width,
-                        height: height,
-                        landmarks: pred.landmarks,
-                        boundingBox: { start, end },
-                        confidence: pred.probability ? pred.probability[0] : 1.0
-                    };
-                }));
-
                 // Chỉ update thống kê nếu đang tracking
                 if (this.isTracking) {
                     if (this.onFaceCountUpdate) {
@@ -488,9 +511,6 @@ class FaceDetector {
                 // VẼ KHUNG KHUÔN MẶT (luôn vẽ dù có tracking hay không)
                 this.drawFaceDetections(predictions, trackedFaces);
             } else {
-                // LUÔN cập nhật face tracker ngay cả khi không có khuôn mặt
-                this.faceTracker.update([]);
-
                 // Chỉ update thống kê nếu đang tracking
                 if (this.isTracking && this.onFaceCountUpdate) {
                     this.onFaceCountUpdate(0);
@@ -508,6 +528,20 @@ class FaceDetector {
         }
     }
 
+    // 🆕 Đảm bảo video luôn hiển thị
+    ensureVideoDisplay() {
+        if (this.video && this.video.srcObject && this.video.paused) {
+            this.video.play().catch(e => {
+                console.warn('Video play failed, retrying...', e);
+                setTimeout(() => {
+                    if (this.video && this.video.srcObject) {
+                        this.video.play();
+                    }
+                }, 100);
+            });
+        }
+    }
+    
     drawStatusInfo() {
         // Vẽ background cho text
         this.ctx.fillStyle = 'rgba(0, 0, 0, 0.6)';
@@ -579,35 +613,17 @@ class FaceDetector {
     }
 
     // Thuật toán theo dõi khuôn mặt cải tiến
-    trackUniqueFaces(predictions) {
-        const faces = predictions.map(pred => {
-            const start = pred.topLeft;
-            const end = pred.bottomRight;
-            const centerX = (start[0] + end[0]) / 2;
-            const centerY = (start[1] + end[1]) / 2;
-            const width = end[0] - start[0];
-            const height = end[1] - start[1];
-
-            return {
-                x: centerX,
-                y: centerY,
-                width: width,
-                height: height,
-                landmarks: pred.landmarks,
-                boundingBox: { start, end },
-                // Thêm confidence score
-                confidence: pred.probability ? pred.probability[0] : 1.0
-            };
-        });
-
-        // Lọc bỏ các detection có confidence thấp
-        const filteredFaces = faces.filter(face => face.confidence > 0.7);
-
-        const trackedFaces = this.faceTracker.update(filteredFaces);
+    trackUniqueFaces(trackedFaces) {
         let newFaces = 0;
 
+        // Kiểm tra trackedFaces có tồn tại và là array
+        if (!trackedFaces || !Array.isArray(trackedFaces)) {
+            return 0;
+        }
+
         trackedFaces.forEach(face => {
-            if (face.isNew && face.confidence > 0.8) { // Chỉ tính faces có confidence cao
+            // Kiểm tra face object có tồn tại và có đủ properties
+            if (face && face.isNew && face.confidence > 0.8) {
                 this.uniqueFaces.add(face.id);
                 this.totalFacesCount++;
                 newFaces++;
