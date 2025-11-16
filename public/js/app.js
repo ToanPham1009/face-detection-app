@@ -46,7 +46,134 @@ class FaceDetectionApp {
         // Setup tab switching
         this.setupTabSwitching();
 
+        // Thêm event listeners cho modal xóa
+        this.setupDeleteModal();
+
         console.log('✅ FaceDetectionApp initialized successfully');
+    }
+
+    // Thêm phương thức setupDeleteModal
+    setupDeleteModal() {
+        this.deleteModal = document.getElementById('deleteModal');
+        this.closeModal = document.querySelector('.close');
+        this.cancelDelete = document.getElementById('cancelDelete');
+        this.confirmDelete = document.getElementById('confirmDelete');
+        this.deleteSessionInfo = document.getElementById('deleteSessionInfo');
+
+        // Event listeners cho modal
+        this.closeModal.addEventListener('click', () => this.hideDeleteModal());
+        this.cancelDelete.addEventListener('click', () => this.hideDeleteModal());
+        this.confirmDelete.addEventListener('click', () => this.executeDelete());
+
+        // Đóng modal khi click bên ngoài
+        window.addEventListener('click', (e) => {
+            if (e.target === this.deleteModal) {
+                this.hideDeleteModal();
+            }
+        });
+    }
+
+    // Phương thức ẩn modal
+    hideDeleteModal() {
+        this.deleteModal.style.display = 'none';
+        this.currentDeleteSession = null;
+    }
+
+    // Phương thức thực hiện xóa
+    async executeDelete() {
+        if (!this.currentDeleteSession) return;
+
+        const deleteBtn = this.confirmDelete;
+        const originalText = deleteBtn.innerHTML;
+
+        try {
+            // Hiển thị loading
+            deleteBtn.innerHTML = '<span class="loading"></span> Đang xóa...';
+            deleteBtn.disabled = true;
+
+            const sessionId = this.currentDeleteSession.id;
+
+            console.log(`🗑️ Đang xóa session: ${sessionId}`);
+
+            const response = await fetch(`/api/sessions/${sessionId}`, {
+                method: 'DELETE',
+                headers: {
+                    'Content-Type': 'application/json',
+                }
+            });
+
+            if (response.ok) {
+                const result = await response.json();
+                console.log('✅ Session deleted successfully:', result);
+                this.hideDeleteModal();
+
+                // Hiển thị thông báo thành công
+                this.showNotification('✅ Session đã được xóa thành công', 'success');
+
+                // Reload danh sách video
+                await this.loadVideoHistory();
+
+                // Clear video player nếu đang phát session bị xóa
+                const videoPlayer = document.getElementById('playbackVideo');
+                const videoInfo = document.getElementById('videoInfo');
+                if (videoPlayer && videoInfo) {
+                    videoPlayer.style.display = 'none';
+                    videoInfo.innerHTML = `
+                    <div class="no-video-selected">
+                        <div class="icon">📹</div>
+                        <div>
+                            <h4>Chưa có video được chọn</h4>
+                            <p>Vui lòng chọn một session từ danh sách bên trái để xem video và thông tin chi tiết.</p>
+                        </div>
+                    </div>
+                `;
+                }
+            } else {
+                const errorData = await response.json();
+                throw new Error(errorData.error || 'Lỗi khi xóa session');
+            }
+        } catch (error) {
+            console.error('❌ Error deleting session:', error);
+            this.showNotification(`❌ Lỗi khi xóa session: ${error.message}`, 'error');
+        } finally {
+            // Khôi phục trạng thái nút
+            deleteBtn.innerHTML = 'Xác nhận xóa';
+            deleteBtn.disabled = false;
+        }
+    }
+
+    // Phương thức hiển thị thông báo
+    showNotification(message, type = 'info') {
+        // Tạo element thông báo
+        const notification = document.createElement('div');
+        notification.className = `notification ${type}`;
+
+        const icon = type === 'success' ? '✅' : type === 'error' ? '❌' : 'ℹ️';
+
+        notification.innerHTML = `
+        <div class="notification-content">
+            <span class="notification-message">${icon} ${message}</span>
+            <button class="notification-close">&times;</button>
+        </div>
+    `;
+
+        // Thêm vào DOM
+        document.body.appendChild(notification);
+
+        // Tự động ẩn sau 5 giây
+        setTimeout(() => {
+            if (notification.parentNode) {
+                notification.parentNode.removeChild(notification);
+            }
+        }, 5000);
+
+        // Cho phép đóng thủ công
+        const closeBtn = notification.querySelector('.notification-close');
+        closeBtn.addEventListener('click', () => {
+            if (notification.parentNode) {
+                notification.parentNode.removeChild(notification);
+            }
+        });
     }
 
     setupEventListeners() {
@@ -76,7 +203,7 @@ class FaceDetectionApp {
         try {
             // Bắt đầu face detection
             this.faceDetector.startTracking();
-            
+
             // Bắt đầu recording video - sử dụng video element ẩn từ FaceDetector
             if (this.faceDetector.video) {
                 await this.videoManager.startRecording(this.faceDetector.video);
@@ -84,7 +211,7 @@ class FaceDetectionApp {
             } else {
                 console.warn('⚠️ Video element not available for recording');
             }
-            
+
         } catch (error) {
             console.error('❌ Error starting tracking/recording:', error);
             alert('Lỗi khi bắt đầu ghi hình: ' + error.message);
@@ -96,11 +223,11 @@ class FaceDetectionApp {
         try {
             // Dừng face detection
             this.faceDetector.stopTracking();
-            
+
             // Dừng recording và lưu video
             const videoData = await this.videoManager.stopRecording();
             console.log('✅ Video recording stopped:', videoData);
-            
+
             // Lưu session data
             if (videoData && videoData.filename) {
                 await this.saveSessionData(videoData);
@@ -109,7 +236,7 @@ class FaceDetectionApp {
                 await this.saveSessionData({ filename: null });
                 console.log('⚠️ Session data saved without video');
             }
-            
+
         } catch (error) {
             console.error('❌ Error stopping tracking/recording:', error);
             // Vẫn lưu session data ngay cả khi có lỗi video
@@ -191,6 +318,7 @@ class FaceDetectionApp {
         }
     }
 
+    // Sửa phương thức createVideoItem để thêm nút xóa
     createVideoItem(session) {
         const div = document.createElement('div');
         div.className = 'video-item';
@@ -204,7 +332,11 @@ class FaceDetectionApp {
                 <span class="session-status ${hasVideo ? 'status-recorded' : 'status-no-video'}"></span>
                 Session ${session.id ? session.id.substring(0, 8) : 'N/A'}...
             </div>
-            <div class="video-date">${new Date(session.start_time).toLocaleDateString()}</div>
+            <div class="video-actions">
+                <button class="delete-btn" data-session-id="${session.id}">
+                    🗑️ Xóa
+                </button>
+            </div>
         </div>
         <div class="video-stats">
             <div class="stat">
@@ -216,22 +348,54 @@ class FaceDetectionApp {
                 <span class="stat-value">${session.total_faces || 0}</span>
             </div>
             <div class="stat">
+                <span class="stat-label">NGÀY:</span>
+                <span class="stat-value">${new Date(session.start_time).toLocaleDateString('vi-VN')}</span>
+            </div>
+            <div class="stat">
                 <span class="stat-label">BẮT ĐẦU:</span>
-                <span class="stat-value">${new Date(session.start_time).toLocaleTimeString()}</span>
+                <span class="stat-value">${new Date(session.start_time).toLocaleTimeString('vi-VN')}</span>
             </div>
             <div class="stat">
                 <span class="stat-label">KẾT THÚC:</span>
-                <span class="stat-value">${new Date(session.end_time).toLocaleTimeString()}</span>
+                <span class="stat-value">${new Date(session.end_time).toLocaleTimeString('vi-VN')}</span>
             </div>
         </div>
         ${!hasVideo ? '<div style="margin-top: 8px; font-size: 12px; color: #ffc107;">📹 Không có video</div>' : ''}
     `;
 
+        // Event listener cho toàn bộ item (play video)
         div.addEventListener('click', (event) => {
-            this.playVideo(session, event);
+            // Chỉ play video nếu không click vào nút xóa
+            if (!event.target.closest('.delete-btn')) {
+                this.playVideo(session, event);
+            }
+        });
+
+        // Event listener cho nút xóa
+        const deleteBtn = div.querySelector('.delete-btn');
+        deleteBtn.addEventListener('click', (event) => {
+            event.stopPropagation(); // Ngăn không trigger event play video
+            this.showDeleteModal(session);
         });
 
         return div;
+    }
+
+    // Phương thức hiển thị modal xóa
+    showDeleteModal(session) {
+        this.currentDeleteSession = session;
+
+        // Điền thông tin session vào modal
+        this.deleteSessionInfo.innerHTML = `
+        <div><strong>Session ID:</strong> <span>${session.id ? session.id.substring(0, 12) + '...' : 'N/A'}</span></div>
+        <div><strong>Thời gian bắt đầu:</strong> <span>${new Date(session.start_time).toLocaleString('vi-VN')}</span></div>
+        <div><strong>Thời gian kết thúc:</strong> <span>${new Date(session.end_time).toLocaleString('vi-VN')}</span></div>
+        <div><strong>Tổng khuôn mặt:</strong> <span>${session.total_faces || 0}</span></div>
+        <div><strong>Thời lượng:</strong> <span>${this.formatDuration(session.duration || 0)}</span></div>
+        <div><strong>Video:</strong> <span>${session.video_filename && session.video_filename !== 'null' ? '✅ Có' : '❌ Không có'}</span></div>
+    `;
+
+        this.deleteModal.style.display = 'block';
     }
 
     formatDuration(seconds) {

@@ -68,9 +68,9 @@ app.get('*', (req, res) => {
 // Error handling middleware
 app.use((error, req, res, next) => {
   console.error('🚨 Server Error:', error);
-  res.status(500).json({ 
+  res.status(500).json({
     error: 'Internal Server Error',
-    message: error.message 
+    message: error.message
   });
 });
 
@@ -87,5 +87,72 @@ async function startServer() {
     process.exit(1);
   }
 }
+
+// API xóa session và video liên quan
+app.delete('/api/sessions/:sessionId', async (req, res) => {
+  try {
+    const { sessionId } = req.params;
+
+    console.log(`🗑️ Nhận yêu cầu xóa session: ${sessionId}`);
+
+    // 1. Lấy thông tin session trước khi xóa
+    const session = await db.get('SELECT * FROM sessions WHERE id = ?', [sessionId]);
+
+    if (!session) {
+      console.log(`❌ Session không tồn tại: ${sessionId}`);
+      return res.status(404).json({ error: 'Session không tồn tại' });
+    }
+
+    // 2. Xóa video từ Cloudinary nếu có
+    if (session.video_filename && session.video_filename !== 'null') {
+      try {
+        // Extract public_id từ URL Cloudinary
+        const videoUrl = session.video_filename;
+        const publicId = videoUrl.split('/').pop().split('.')[0];
+
+        console.log(`🎥 Đang xóa video từ Cloudinary: ${publicId}`);
+
+        // Xóa video từ Cloudinary
+        const result = await cloudinary.uploader.destroy(publicId, {
+          resource_type: 'video'
+        });
+
+        if (result.result === 'ok') {
+          console.log(`✅ Đã xóa video từ Cloudinary: ${publicId}`);
+        } else {
+          console.warn(`⚠️ Không thể xóa video từ Cloudinary: ${result.result}`);
+        }
+      } catch (cloudinaryError) {
+        console.warn('⚠️ Lỗi khi xóa video từ Cloudinary:', cloudinaryError);
+      }
+    }
+
+    // 3. Xóa dữ liệu minutes liên quan
+    const minutesDelete = await db.run('DELETE FROM minutes WHERE session_id = ?', [sessionId]);
+    console.log(`✅ Đã xóa ${minutesDelete.changes} bản ghi minutes`);
+
+    // 4. Xóa session
+    const sessionDelete = await db.run('DELETE FROM sessions WHERE id = ?', [sessionId]);
+
+    if (sessionDelete.changes > 0) {
+      console.log(`✅ Đã xóa session: ${sessionId}`);
+      res.json({
+        success: true,
+        message: 'Session đã được xóa thành công',
+        deletedSession: sessionId,
+        deletedVideo: !!(session.video_filename && session.video_filename !== 'null')
+      });
+    } else {
+      throw new Error('Không thể xóa session từ database');
+    }
+
+  } catch (error) {
+    console.error('❌ Lỗi khi xóa session:', error);
+    res.status(500).json({
+      error: 'Lỗi server khi xóa session',
+      details: error.message
+    });
+  }
+});
 
 startServer();
