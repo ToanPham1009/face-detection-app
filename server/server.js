@@ -1,7 +1,7 @@
 const express = require('express');
 const path = require('path');
 const cors = require('cors');
-const { initializeDatabase } = require('./config/database');
+const { initializeDatabase, pool } = require('./config/database'); // ĐỔI db thành pool
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -11,8 +11,6 @@ app.use(cors());
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 app.use(express.static(path.join(__dirname, '../public')));
-
-
 
 // Tạo thư mục uploads tạm
 const fs = require('fs');
@@ -55,40 +53,13 @@ try {
 }
 
 console.log('🎯 All routes configured');
+
 // Health check
 app.get('/health', (req, res) => {
   res.json({ status: 'OK', timestamp: new Date().toISOString() });
 });
 
-// Serve frontend (SPA)
-app.get('*', (req, res) => {
-  res.sendFile(path.join(__dirname, '../public/index.html'));
-});
-
-// Error handling middleware
-app.use((error, req, res, next) => {
-  console.error('🚨 Server Error:', error);
-  res.status(500).json({
-    error: 'Internal Server Error',
-    message: error.message
-  });
-});
-
-// Initialize and start server
-async function startServer() {
-  try {
-    await initializeDatabase();
-    app.listen(PORT, '0.0.0.0', () => {
-      console.log(`🚀 Server running on port ${PORT}`);
-      console.log(`📊 Environment: ${process.env.NODE_ENV || 'development'}`);
-    });
-  } catch (error) {
-    console.error('💥 Failed to start server:', error);
-    process.exit(1);
-  }
-}
-
-// API xóa session và video liên quan
+// API xóa session và video liên quan - SỬA LẠI DÙNG POOL
 app.delete('/api/sessions/:sessionId', async (req, res) => {
   try {
     const { sessionId } = req.params;
@@ -96,7 +67,8 @@ app.delete('/api/sessions/:sessionId', async (req, res) => {
     console.log(`🗑️ Nhận yêu cầu xóa session: ${sessionId}`);
 
     // 1. Lấy thông tin session trước khi xóa
-    const session = await db.get('SELECT * FROM sessions WHERE id = ?', [sessionId]);
+    const sessionResult = await pool.query('SELECT * FROM sessions WHERE id = $1', [sessionId]);
+    const session = sessionResult.rows[0];
 
     if (!session) {
       console.log(`❌ Session không tồn tại: ${sessionId}`);
@@ -128,13 +100,13 @@ app.delete('/api/sessions/:sessionId', async (req, res) => {
     }
 
     // 3. Xóa dữ liệu minutes liên quan
-    const minutesDelete = await db.run('DELETE FROM minutes WHERE session_id = ?', [sessionId]);
-    console.log(`✅ Đã xóa ${minutesDelete.changes} bản ghi minutes`);
+    const minutesDelete = await pool.query('DELETE FROM minutes WHERE session_id = $1', [sessionId]);
+    console.log(`✅ Đã xóa ${minutesDelete.rowCount} bản ghi minutes`);
 
     // 4. Xóa session
-    const sessionDelete = await db.run('DELETE FROM sessions WHERE id = ?', [sessionId]);
+    const sessionDelete = await pool.query('DELETE FROM sessions WHERE id = $1', [sessionId]);
 
-    if (sessionDelete.changes > 0) {
+    if (sessionDelete.rowCount > 0) {
       console.log(`✅ Đã xóa session: ${sessionId}`);
       res.json({
         success: true,
@@ -154,5 +126,33 @@ app.delete('/api/sessions/:sessionId', async (req, res) => {
     });
   }
 });
+
+// Serve frontend (SPA)
+app.get('*', (req, res) => {
+  res.sendFile(path.join(__dirname, '../public/index.html'));
+});
+
+// Error handling middleware
+app.use((error, req, res, next) => {
+  console.error('🚨 Server Error:', error);
+  res.status(500).json({
+    error: 'Internal Server Error',
+    message: error.message
+  });
+});
+
+// Initialize and start server
+async function startServer() {
+  try {
+    await initializeDatabase();
+    app.listen(PORT, '0.0.0.0', () => {
+      console.log(`🚀 Server running on port ${PORT}`);
+      console.log(`📊 Environment: ${process.env.NODE_ENV || 'development'}`);
+    });
+  } catch (error) {
+    console.error('💥 Failed to start server:', error);
+    process.exit(1);
+  }
+}
 
 startServer();

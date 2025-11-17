@@ -623,7 +623,7 @@ h1 {
     background: #2c3e50;
     color: white;
     padding: 15px 0;
-    box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+    box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
 }
 
 .header-content {
@@ -772,6 +772,7 @@ h1 {
         padding-bottom: 10px;
     }
 }
+
 /* ===== CÁC STYLES BỔ SUNG ===== */
 
 /* Camera Controls */
@@ -808,7 +809,8 @@ h1 {
     height: auto;
     display: block;
     background: #000;
-    transform: scaleX(-1); /* Mirror effect cho front camera */
+    transform: scaleX(-1);
+    /* Mirror effect cho front camera */
 }
 
 #faceCanvas {
@@ -816,7 +818,8 @@ h1 {
     height: auto;
     display: block;
     background: #000;
-    transform: scaleX(-1); /* Mirror effect cho front camera */
+    transform: scaleX(-1);
+    /* Mirror effect cho front camera */
 }
 
 /* History Container */
@@ -957,27 +960,310 @@ h1 {
     cursor: not-allowed;
 }
 
+/* Modal Styles */
+.modal {
+    display: none;
+    position: fixed;
+    z-index: 1000;
+    left: 0;
+    top: 0;
+    width: 100%;
+    height: 100%;
+    background-color: rgba(0, 0, 0, 0.5);
+    animation: fadeIn 0.3s ease;
+}
+
+.modal-content {
+    background-color: #fefefe;
+    margin: 10% auto;
+    padding: 0;
+    border-radius: 8px;
+    width: 90%;
+    max-width: 500px;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+    animation: slideIn 0.3s ease;
+}
+
+.modal-header {
+    background: linear-gradient(135deg, #dc3545, #c82333);
+    color: white;
+    padding: 15px 20px;
+    border-radius: 8px 8px 0 0;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.modal-header h3 {
+    margin: 0;
+    font-size: 18px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.close {
+    color: white;
+    font-size: 24px;
+    font-weight: bold;
+    cursor: pointer;
+    line-height: 1;
+    transition: opacity 0.3s ease;
+}
+
+.close:hover {
+    opacity: 0.8;
+}
+
+.modal-body {
+    padding: 20px;
+}
+
+.modal-footer {
+    padding: 15px 20px;
+    border-top: 1px solid #eee;
+    display: flex;
+    justify-content: flex-end;
+    gap: 10px;
+}
+
+.session-info {
+    background: #f8f9fa;
+    padding: 15px;
+    border-radius: 6px;
+    margin: 15px 0;
+    border-left: 4px solid #dc3545;
+}
+
+.session-info div {
+    margin: 8px 0;
+    display: flex;
+    justify-content: space-between;
+}
+
+.session-info strong {
+    color: #333;
+}
+
+.warning-text {
+    color: #dc3545;
+    font-weight: bold;
+    text-align: center;
+    margin-top: 15px;
+    padding: 10px;
+    background: #fff5f5;
+    border-radius: 4px;
+    border: 1px solid #feb2b2;
+}
+
+/* Nút xóa trong video item */
+.delete-btn {
+    background: linear-gradient(135deg, #dc3545, #c82333);
+    color: white;
+    border: none;
+    padding: 8px 16px;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 13px;
+    font-weight: 500;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    transition: all 0.3s ease;
+    box-shadow: 0 2px 4px rgba(220, 53, 69, 0.3);
+}
+
+.delete-btn:hover {
+    background: linear-gradient(135deg, #c82333, #a71e2a);
+    transform: translateY(-2px);
+    box-shadow: 0 4px 8px rgba(220, 53, 69, 0.4);
+}
+
+.delete-btn:active {
+    transform: translateY(0);
+}
+
+.delete-btn:disabled {
+    background: #6c757d;
+    cursor: not-allowed;
+    transform: none;
+    box-shadow: none;
+}
+
+/* Video item với nút xóa */
+.video-item-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 12px;
+}
+
+.video-actions {
+    display: flex;
+    gap: 10px;
+    align-items: center;
+}
+
+/* Animation */
+@keyframes fadeIn {
+    from {
+        opacity: 0;
+    }
+
+    to {
+        opacity: 1;
+    }
+}
+
+@keyframes slideIn {
+    from {
+        opacity: 0;
+        transform: translateY(-50px);
+    }
+
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+/* Loading state */
+.loading {
+    display: inline-block;
+    width: 16px;
+    height: 16px;
+    border: 2px solid #f3f3f3;
+    border-top: 2px solid #3498db;
+    border-radius: 50%;
+    animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+    0% {
+        transform: rotate(0deg);
+    }
+
+    100% {
+        transform: rotate(360deg);
+    }
+}
+
+/* Notification Styles */
+.notification {
+    position: fixed;
+    top: 20px;
+    right: 20px;
+    padding: 15px 20px;
+    border-radius: 6px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+    z-index: 1001;
+    min-width: 300px;
+    max-width: 500px;
+    animation: slideInRight 0.3s ease;
+}
+
+.notification.success {
+    background: #d4edda;
+    color: #155724;
+    border: 1px solid #c3e6cb;
+}
+
+.notification.error {
+    background: #f8d7da;
+    color: #721c24;
+    border: 1px solid #f5c6cb;
+}
+
+.notification.info {
+    background: #d1ecf1;
+    color: #0c5460;
+    border: 1px solid #bee5eb;
+}
+
+.notification-content {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.notification-close {
+    background: none;
+    border: none;
+    font-size: 18px;
+    cursor: pointer;
+    margin-left: 10px;
+    color: inherit;
+    opacity: 0.7;
+    transition: opacity 0.3s ease;
+}
+
+.notification-close:hover {
+    opacity: 1;
+}
+
+@keyframes slideInRight {
+    from {
+        opacity: 0;
+        transform: translateX(100%);
+    }
+
+    to {
+        opacity: 1;
+        transform: translateX(0);
+    }
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+    .modal-content {
+        width: 95%;
+        margin: 5% auto;
+    }
+
+    .video-item-header {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 10px;
+    }
+
+    .video-actions {
+        align-self: stretch;
+        justify-content: flex-end;
+    }
+
+    .delete-btn {
+        flex: 1;
+        justify-content: center;
+    }
+
+    .notification {
+        left: 10px;
+        right: 10px;
+        min-width: auto;
+    }
+}
+
 /* Responsive fixes */
 @media (max-width: 768px) {
     .camera-controls {
         flex-direction: column;
         align-items: center;
     }
-    
+
     .camera-controls .btn {
         width: 100%;
         max-width: 300px;
     }
-    
+
     .history-container {
         grid-template-columns: 1fr;
         height: auto;
     }
-    
+
     .video-list {
         height: 400px;
     }
-    
+
     .video-player-container {
         height: 500px;
     }
@@ -988,16 +1274,16 @@ h1 {
         margin: 10px;
         padding: 0;
     }
-    
+
     .tab-content {
         padding: 15px;
     }
-    
+
     .stats {
         grid-template-columns: 1fr;
         gap: 15px;
     }
-    
+
     .stat-card {
         padding: 20px;
     }
