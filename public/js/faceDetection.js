@@ -407,16 +407,8 @@ class FaceDetector {
             this.timeInterval = null;
         }
 
-        // 🆕 ĐẢM BẢO VIDEO VẪN HIỂN THỊ
-        if (this.video && this.video.srcObject) {
-            // Video stream vẫn active, tiếp tục play
-            this.video.play().catch(e => console.log('Video play error:', e));
-        }
-
-        // 🆕 VẼ LẠI VIDEO FRAME ĐỂ ĐẢM BẢO KHÔNG BỊ ĐEN
-        setTimeout(() => {
-            this.drawVideoFrame();
-        }, 100);
+        // 🆕 KHÔNG dừng detection loop, chỉ dừng tracking thống kê
+        // Detection vẫn tiếp tục chạy, vẫn vẽ khung khuôn mặt
 
         // Reset các biến thống kê về 0 để hiển thị
         if (this.onFaceCountUpdate) {
@@ -541,7 +533,7 @@ class FaceDetector {
             });
         }
     }
-    
+
     drawStatusInfo() {
         // Vẽ background cho text
         this.ctx.fillStyle = 'rgba(0, 0, 0, 0.6)';
@@ -561,7 +553,7 @@ class FaceDetector {
         } else {
             this.ctx.fillText('📷 Camera Mode', 20, 30);
             this.ctx.font = '12px Arial';
-            this.ctx.fillText(`Faces: ${this.faceTracker.getTrackedFacesCount()}`, 20, 50);
+            this.ctx.fillText(`Faces Detected: ${this.faceTracker.getTrackedFacesCount()}`, 20, 50);
             this.ctx.fillText('⏸️ Tracking Paused', 20, 70);
         }
     }
@@ -634,6 +626,7 @@ class FaceDetector {
     }
 
     // Vẽ detection boxes và landmarks
+    // Vẽ detection boxes và landmarks với trackedFaces
     // Vẽ detection boxes và landmarks với trackedFaces
     drawFaceDetections(predictions, trackedFaces = null) {
         // Nếu không có trackedFaces được truyền vào, lấy từ tracker
@@ -775,6 +768,12 @@ class FaceDetector {
                         break;
                 }
             }
+        }
+
+        // 🆕 Cập nhật text cho stopTracking button để rõ hơn
+        const stopTrackingBtn = document.getElementById('stopTracking');
+        if (stopTrackingBtn) {
+            stopTrackingBtn.textContent = '⏸️ Dừng Thống Kê';
         }
     }
 }
