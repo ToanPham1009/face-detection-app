@@ -17,7 +17,6 @@ class FaceDetectionApp {
     initialize() {
         console.log('🎯 Starting app initialization...');
 
-        // CẬP NHẬT: Xóa 'webcamVideo' khỏi required elements
         const requiredElements = [
             'startCamera', 'stopCamera', 'startTracking', 'stopTracking',
             'faceCanvas', 'currentFaces', 'totalFaces', 'trackingTime'
@@ -27,14 +26,13 @@ class FaceDetectionApp {
 
         if (missingElements.length > 0) {
             console.error('❌ Missing required DOM elements:', missingElements);
-            // Thử lại sau 1 giây
             setTimeout(() => this.initialize(), 1000);
             return;
         }
 
         console.log('✅ All DOM elements found');
 
-        // Khởi tạo FaceDetector
+        // Khởi tạo FaceDetector với tracking cải tiến
         this.faceDetector = new FaceDetector();
 
         // Setup event listeners
@@ -52,7 +50,6 @@ class FaceDetectionApp {
         console.log('✅ FaceDetectionApp initialized successfully');
     }
 
-    // Thêm phương thức setupDeleteModal
     setupDeleteModal() {
         this.deleteModal = document.getElementById('deleteModal');
         this.closeModal = document.querySelector('.close');
@@ -73,13 +70,11 @@ class FaceDetectionApp {
         });
     }
 
-    // Phương thức ẩn modal
     hideDeleteModal() {
         this.deleteModal.style.display = 'none';
         this.currentDeleteSession = null;
     }
 
-    // Phương thức thực hiện xóa
     async executeDelete() {
         if (!this.currentDeleteSession) return;
 
@@ -87,7 +82,6 @@ class FaceDetectionApp {
         const originalText = deleteBtn.innerHTML;
 
         try {
-            // Hiển thị loading
             deleteBtn.innerHTML = '<span class="loading"></span> Đang xóa...';
             deleteBtn.disabled = true;
 
@@ -106,11 +100,7 @@ class FaceDetectionApp {
                 const result = await response.json();
                 console.log('✅ Session deleted successfully:', result);
                 this.hideDeleteModal();
-
-                // Hiển thị thông báo thành công
                 this.showNotification('✅ Session đã được xóa thành công', 'success');
-
-                // Reload danh sách video
                 await this.loadVideoHistory();
 
                 // Clear video player nếu đang phát session bị xóa
@@ -136,15 +126,12 @@ class FaceDetectionApp {
             console.error('❌ Error deleting session:', error);
             this.showNotification(`❌ Lỗi khi xóa session: ${error.message}`, 'error');
         } finally {
-            // Khôi phục trạng thái nút
             deleteBtn.innerHTML = 'Xác nhận xóa';
             deleteBtn.disabled = false;
         }
     }
 
-    // Phương thức hiển thị thông báo
     showNotification(message, type = 'info') {
-        // Tạo element thông báo
         const notification = document.createElement('div');
         notification.className = `notification ${type}`;
 
@@ -157,17 +144,14 @@ class FaceDetectionApp {
         </div>
     `;
 
-        // Thêm vào DOM
         document.body.appendChild(notification);
 
-        // Tự động ẩn sau 5 giây
         setTimeout(() => {
             if (notification.parentNode) {
                 notification.parentNode.removeChild(notification);
             }
         }, 5000);
 
-        // Cho phép đóng thủ công
         const closeBtn = notification.querySelector('.notification-close');
         closeBtn.addEventListener('click', () => {
             if (notification.parentNode) {
@@ -179,12 +163,11 @@ class FaceDetectionApp {
     setupEventListeners() {
         console.log('🔗 Setting up event listeners...');
 
-        // CẬP NHẬT: Sử dụng các hàm mới đã được định nghĩa
         const elements = {
             'startCamera': () => this.faceDetector.startCamera(),
             'stopCamera': () => this.faceDetector.stopCamera(),
-            'startTracking': () => this.startTracking(), // Sửa: gọi this.startTracking()
-            'stopTracking': () => this.stopTracking()    // Sửa: gọi this.stopTracking()
+            'startTracking': () => this.startTracking(),
+            'stopTracking': () => this.stopTracking()
         };
 
         for (const [id, handler] of Object.entries(elements)) {
@@ -198,37 +181,27 @@ class FaceDetectionApp {
         }
     }
 
-    // Hàm mới: Bắt đầu tracking và recording
     async startTracking() {
         try {
-            // Bắt đầu face detection
             this.faceDetector.startTracking();
-
-            // Bắt đầu recording video - sử dụng video element ẩn từ FaceDetector
             if (this.faceDetector.video) {
                 await this.videoManager.startRecording(this.faceDetector.video);
                 console.log('✅ Video recording started');
             } else {
                 console.warn('⚠️ Video element not available for recording');
             }
-
         } catch (error) {
             console.error('❌ Error starting tracking/recording:', error);
             alert('Lỗi khi bắt đầu ghi hình: ' + error.message);
         }
     }
 
-    // Hàm mới: Dừng tracking và recording
     async stopTracking() {
         try {
-            // Dừng face detection
             this.faceDetector.stopTracking();
-
-            // Dừng recording và lưu video
             const videoData = await this.videoManager.stopRecording();
             console.log('✅ Video recording stopped:', videoData);
 
-            // Lưu session data
             if (videoData && videoData.filename) {
                 await this.saveSessionData(videoData);
                 console.log('✅ Session data saved with video');
@@ -236,10 +209,8 @@ class FaceDetectionApp {
                 await this.saveSessionData({ filename: null });
                 console.log('⚠️ Session data saved without video');
             }
-
         } catch (error) {
             console.error('❌ Error stopping tracking/recording:', error);
-            // Vẫn lưu session data ngay cả khi có lỗi video
             await this.saveSessionData({ filename: null });
         }
     }
@@ -271,22 +242,18 @@ class FaceDetectionApp {
     }
 
     switchTab(tabName) {
-        // Ẩn tất cả tab content
         const tabContents = document.querySelectorAll('.tab-content');
         tabContents.forEach(tab => tab.classList.remove('active'));
 
-        // Bỏ active tất cả tab buttons
         const tabButtons = document.querySelectorAll('.tab-button');
         tabButtons.forEach(button => button.classList.remove('active'));
 
-        // Hiển thị tab được chọn
         const selectedTab = document.getElementById(`${tabName}-tab`);
         const selectedButton = document.querySelector(`[data-tab="${tabName}"]`);
 
         if (selectedTab) selectedTab.classList.add('active');
         if (selectedButton) selectedButton.classList.add('active');
 
-        // Nếu chuyển sang tab history, load dữ liệu
         if (tabName === 'history') {
             this.loadVideoHistory();
         }
@@ -318,7 +285,6 @@ class FaceDetectionApp {
         }
     }
 
-    // Sửa phương thức createVideoItem để thêm nút xóa
     createVideoItem(session) {
         const div = document.createElement('div');
         div.className = 'video-item';
@@ -363,29 +329,23 @@ class FaceDetectionApp {
         ${!hasVideo ? '<div style="margin-top: 8px; font-size: 12px; color: #ffc107;">📹 Không có video</div>' : ''}
     `;
 
-        // Event listener cho toàn bộ item (play video)
         div.addEventListener('click', (event) => {
-            // Chỉ play video nếu không click vào nút xóa
             if (!event.target.closest('.delete-btn')) {
                 this.playVideo(session, event);
             }
         });
 
-        // Event listener cho nút xóa
         const deleteBtn = div.querySelector('.delete-btn');
         deleteBtn.addEventListener('click', (event) => {
-            event.stopPropagation(); // Ngăn không trigger event play video
+            event.stopPropagation();
             this.showDeleteModal(session);
         });
 
         return div;
     }
 
-    // Phương thức hiển thị modal xóa
     showDeleteModal(session) {
         this.currentDeleteSession = session;
-
-        // Điền thông tin session vào modal
         this.deleteSessionInfo.innerHTML = `
         <div><strong>Session ID:</strong> <span>${session.id ? session.id.substring(0, 12) + '...' : 'N/A'}</span></div>
         <div><strong>Thời gian bắt đầu:</strong> <span>${new Date(session.start_time).toLocaleString('vi-VN')}</span></div>
@@ -418,7 +378,6 @@ class FaceDetectionApp {
             const videoPlayer = document.getElementById('playbackVideo');
             const videoInfo = document.getElementById('videoInfo');
 
-            // Update active video item
             document.querySelectorAll('.video-item').forEach(item => {
                 item.classList.remove('active');
             });
@@ -428,7 +387,6 @@ class FaceDetectionApp {
 
             console.log('🎬 Playing video for session:', session.id);
 
-            // Load video if available
             if (session.video_filename && session.video_filename !== 'null') {
                 videoPlayer.src = session.video_filename;
                 videoPlayer.style.display = 'block';
@@ -547,8 +505,6 @@ class FaceDetectionApp {
 
             const result = await response.json();
             console.log('✅ Session saved successfully:', result);
-
-            // Reload video history
             this.loadVideoHistory();
 
         } catch (error) {
@@ -556,4 +512,3 @@ class FaceDetectionApp {
         }
     }
 }
-
