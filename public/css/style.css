@@ -517,89 +517,92 @@ h1 {
     box-shadow: 0 0 20px rgba(0, 0, 0, 0.1);
     font-family: Arial, sans-serif;
 }
-
+/* Auth Form Styles */
 .auth-form {
-    display: none;
-}
-
-.auth-form.active {
-    display: block;
+    background: white;
+    padding: 2rem;
+    border-radius: 10px;
+    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+    max-width: 400px;
+    width: 100%;
+    margin: 0 auto;
 }
 
 .auth-form h2 {
     text-align: center;
-    margin-bottom: 25px;
+    margin-bottom: 1.5rem;
     color: #333;
-    font-size: 24px;
 }
 
-.auth-form input {
+.form-group {
+    margin-bottom: 1rem;
+}
+
+.form-group input {
     width: 100%;
-    padding: 12px 15px;
-    margin: 10px 0;
+    padding: 0.75rem;
     border: 1px solid #ddd;
     border-radius: 5px;
-    box-sizing: border-box;
-    font-size: 14px;
+    font-size: 1rem;
+    transition: border-color 0.3s ease;
 }
 
-.auth-form input:focus {
-    border-color: #007bff;
+.form-group input:focus {
     outline: none;
+    border-color: #007bff;
 }
 
-.auth-form button {
-    width: 100%;
-    padding: 12px;
-    background: #007bff;
-    color: white;
-    border: none;
-    border-radius: 5px;
-    cursor: pointer;
-    margin-top: 15px;
-    font-size: 16px;
-    font-weight: bold;
+.form-text {
+    display: block;
+    margin-top: 0.25rem;
+    font-size: 0.875rem;
+    color: #6c757d;
 }
 
-.auth-form button:hover {
-    background: #0056b3;
-}
-
-.auth-form button:disabled {
-    background: #ccc;
-    cursor: not-allowed;
+.error-message {
+    color: #dc3545;
+    text-align: center;
+    margin: 1rem 0;
+    font-size: 0.875rem;
 }
 
 .auth-switch {
     text-align: center;
-    margin-top: 20px;
-    color: #666;
+    margin-top: 1rem;
 }
 
 .auth-switch a {
     color: #007bff;
     text-decoration: none;
     cursor: pointer;
-    font-weight: bold;
 }
 
 .auth-switch a:hover {
     text-decoration: underline;
 }
 
-.error-message {
-    color: #dc3545;
-    text-align: center;
-    margin-top: 10px;
-    font-size: 14px;
-    min-height: 20px;
+/* Loading animation */
+.loading {
+    display: inline-block;
+    width: 20px;
+    height: 20px;
+    border: 2px solid #f3f3f3;
+    border-top: 2px solid #007bff;
+    border-radius: 50%;
+    animation: spin 1s linear infinite;
 }
 
-.success-message {
-    color: #28a745;
-    text-align: center;
-    margin-top: 10px;
-    font-size: 14px;
+@keyframes spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+}
+
+/* Responsive design */
+@media (max-width: 480px) {
+    .auth-form {
+        padding: 1.5rem;
+        margin: 1rem;
+    }
 }
 
 /* Main App - Ẩn mặc định */

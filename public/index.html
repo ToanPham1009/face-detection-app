@@ -17,8 +17,12 @@
         <div id="loginForm" class="auth-form active">
             <h2>🔐 Đăng nhập</h2>
             <form id="loginFormElement">
-                <input type="email" id="loginEmail" placeholder="Email" required>
-                <input type="password" id="loginPassword" placeholder="Mật khẩu" required>
+                <div class="form-group">
+                    <input type="text" id="loginUsername" placeholder="Tên đăng nhập" required>
+                </div>
+                <div class="form-group">
+                    <input type="password" id="loginPassword" placeholder="Mật khẩu" required>
+                </div>
                 <button type="submit" id="loginButton" class="btn btn-primary">
                     <span id="loginText">Đăng nhập</span>
                     <span id="loginLoading" class="loading" style="display: none;"></span>
@@ -34,10 +38,32 @@
         <div id="registerForm" class="auth-form">
             <h2>📝 Đăng ký tài khoản</h2>
             <form id="registerFormElement">
-                <input type="text" id="registerUsername" placeholder="Tên người dùng" required>
-                <input type="email" id="registerEmail" placeholder="Email" required>
-                <input type="password" id="registerPassword" placeholder="Mật khẩu (ít nhất 6 ký tự)" required
-                    minlength="6">
+                <div class="form-group">
+                    <input type="text" id="registerUsername" placeholder="Tên đăng nhập" required>
+                    <small class="form-text">Tên đăng nhập sẽ dùng để đăng nhập</small>
+                </div>
+                <div class="form-group">
+                    <input type="text" id="registerNickname" placeholder="Tên hiển thị (Nickname)" required>
+                    <small class="form-text">Tên sẽ hiển thị trong ứng dụng</small>
+                </div>
+                <div class="form-group">
+                    <input type="email" id="registerEmail" placeholder="Email" required>
+                    <small class="form-text">Email để nhận thông báo</small>
+                </div>
+                <div class="form-group">
+                    <input type="tel" id="registerPhone" placeholder="Số điện thoại" required>
+                    <small class="form-text">Số điện thoại liên hệ</small>
+                </div>
+                <div class="form-group">
+                    <input type="password" id="registerPassword" placeholder="Mật khẩu (ít nhất 6 ký tự)" required
+                        minlength="6">
+                    <small class="form-text">Mật khẩu phải có ít nhất 6 ký tự</small>
+                </div>
+                <div class="form-group">
+                    <input type="password" id="registerConfirmPassword" placeholder="Xác nhận mật khẩu" required
+                        minlength="6">
+                    <small class="form-text">Nhập lại mật khẩu để xác nhận</small>
+                </div>
                 <button type="submit" id="registerButton" class="btn btn-primary">
                     <span id="registerText">Đăng ký</span>
                     <span id="registerLoading" class="loading" style="display: none;"></span>
@@ -210,6 +236,27 @@
                 document.getElementById('logoutButton').addEventListener('click', () => {
                     this.logout();
                 });
+
+                // Real-time password confirmation check
+                document.getElementById('registerConfirmPassword').addEventListener('input', () => {
+                    this.validatePasswordMatch();
+                });
+
+                document.getElementById('registerPassword').addEventListener('input', () => {
+                    this.validatePasswordMatch();
+                });
+            }
+
+            validatePasswordMatch() {
+                const password = document.getElementById('registerPassword').value;
+                const confirmPassword = document.getElementById('registerConfirmPassword').value;
+                const confirmPasswordField = document.getElementById('registerConfirmPassword');
+
+                if (confirmPassword && password !== confirmPassword) {
+                    confirmPasswordField.style.borderColor = '#dc3545';
+                } else {
+                    confirmPasswordField.style.borderColor = '';
+                }
             }
 
             showForm(formType) {
@@ -217,11 +264,20 @@
                 document.getElementById('registerForm').classList.remove('active');
                 document.getElementById(formType + 'Form').classList.add('active');
                 this.clearErrors();
+                this.clearFormStyles();
             }
 
             clearErrors() {
                 document.getElementById('loginError').textContent = '';
                 document.getElementById('registerError').textContent = '';
+            }
+
+            clearFormStyles() {
+                // Reset border colors
+                const inputs = document.querySelectorAll('#registerForm input');
+                inputs.forEach(input => {
+                    input.style.borderColor = '';
+                });
             }
 
             showLoading(buttonType, isLoading) {
@@ -241,7 +297,7 @@
             }
 
             async login() {
-                const email = document.getElementById('loginEmail').value;
+                const username = document.getElementById('loginUsername').value;
                 const password = document.getElementById('loginPassword').value;
                 const errorElement = document.getElementById('loginError');
 
@@ -254,7 +310,7 @@
                         headers: {
                             'Content-Type': 'application/json',
                         },
-                        body: JSON.stringify({ email, password })
+                        body: JSON.stringify({ username, password })
                     });
 
                     const data = await response.json();
@@ -277,9 +333,23 @@
 
             async register() {
                 const username = document.getElementById('registerUsername').value;
+                const nickname = document.getElementById('registerNickname').value;
                 const email = document.getElementById('registerEmail').value;
+                const phone = document.getElementById('registerPhone').value;
                 const password = document.getElementById('registerPassword').value;
+                const confirmPassword = document.getElementById('registerConfirmPassword').value;
                 const errorElement = document.getElementById('registerError');
+
+                // Client-side validation
+                if (password !== confirmPassword) {
+                    errorElement.textContent = 'Mật khẩu xác nhận không khớp';
+                    return;
+                }
+
+                if (password.length < 6) {
+                    errorElement.textContent = 'Mật khẩu phải có ít nhất 6 ký tự';
+                    return;
+                }
 
                 this.showLoading('register', true);
                 this.clearErrors();
@@ -290,7 +360,13 @@
                         headers: {
                             'Content-Type': 'application/json',
                         },
-                        body: JSON.stringify({ username, email, password })
+                        body: JSON.stringify({ 
+                            username, 
+                            nickname, 
+                            email, 
+                            phone, 
+                            password 
+                        })
                     });
 
                     const data = await response.json();
@@ -314,7 +390,8 @@
             showMainApp() {
                 document.getElementById('authContainer').style.display = 'none';
                 document.getElementById('mainApp').style.display = 'block';
-                document.getElementById('usernameDisplay').textContent = this.user.username;
+                // Hiển thị nickname thay vì username
+                document.getElementById('usernameDisplay').textContent = this.user.nickname || this.user.username;
 
                 if (typeof window.faceDetectionApp === 'undefined') {
                     console.log('🚀 Initializing main application...');
@@ -336,6 +413,7 @@
                 document.getElementById('authContainer').style.display = 'block';
                 this.showForm('login');
                 this.clearErrors();
+                this.clearFormStyles();
                 document.getElementById('loginFormElement').reset();
                 document.getElementById('registerFormElement').reset();
             }
