@@ -13,71 +13,81 @@
 <body>
     <!-- Auth Container - HIỆN MẶC ĐỊNH -->
     <div id="authContainer">
-        <!-- Login Form -->
+        <!-- Login Form - HIỆN ĐẦU TIÊN -->
         <div id="loginForm" class="auth-form active">
-            <h2>🔐 Đăng nhập</h2>
+            <div class="auth-header">
+                <h2>🔐 Đăng nhập</h2>
+            </div>
             <form id="loginFormElement">
                 <div class="form-group">
-                    <input type="text" id="loginUsername" placeholder="Tên đăng nhập" required>
+                    <label for="loginUsername">Tên đăng nhập</label>
+                    <input type="text" id="loginUsername" placeholder="Nhập tên đăng nhập" required>
                 </div>
                 <div class="form-group">
-                    <input type="password" id="loginPassword" placeholder="Mật khẩu" required>
+                    <label for="loginPassword">Mật khẩu</label>
+                    <input type="password" id="loginPassword" placeholder="Nhập mật khẩu" required>
                 </div>
-                <button type="submit" id="loginButton" class="btn btn-primary">
+                <button type="submit" id="loginButton" class="btn btn-primary btn-auth">
                     <span id="loginText">Đăng nhập</span>
                     <span id="loginLoading" class="loading" style="display: none;"></span>
                 </button>
             </form>
             <div class="error-message" id="loginError"></div>
             <div class="auth-switch">
-                <p>Chưa có tài khoản? <a id="showRegister">Đăng ký ngay</a></p>
+                <p>Chưa có tài khoản? <a href="#" id="showRegister">Đăng ký ngay</a></p>
             </div>
         </div>
 
-        <!-- Register Form -->
+        <!-- Register Form - ẨN ĐẦU TIÊN -->
         <div id="registerForm" class="auth-form">
-            <h2>📝 Đăng ký tài khoản</h2>
+            <div class="auth-header">
+                <h2>📝 Đăng ký tài khoản</h2>
+            </div>
             <form id="registerFormElement">
                 <div class="form-group">
-                    <input type="text" id="registerUsername" placeholder="Tên đăng nhập" required>
+                    <label for="registerUsername">Tên đăng nhập</label>
+                    <input type="text" id="registerUsername" placeholder="Nhập tên đăng nhập" required>
                     <small class="form-text">Tên đăng nhập sẽ dùng để đăng nhập</small>
                 </div>
                 <div class="form-group">
-                    <input type="text" id="registerNickname" placeholder="Tên hiển thị (Nickname)" required>
+                    <label for="registerNickname">Tên hiển thị (Nickname)</label>
+                    <input type="text" id="registerNickname" placeholder="Nhập tên hiển thị" required>
                     <small class="form-text">Tên sẽ hiển thị trong ứng dụng</small>
                 </div>
                 <div class="form-group">
-                    <input type="email" id="registerEmail" placeholder="Email" required>
+                    <label for="registerEmail">Email</label>
+                    <input type="email" id="registerEmail" placeholder="Nhập email" required>
                     <small class="form-text">Email để nhận thông báo</small>
                 </div>
                 <div class="form-group">
-                    <input type="tel" id="registerPhone" placeholder="Số điện thoại" required>
+                    <label for="registerPhone">Số điện thoại</label>
+                    <input type="tel" id="registerPhone" placeholder="Nhập số điện thoại" required>
                     <small class="form-text">Số điện thoại liên hệ</small>
                 </div>
                 <div class="form-group">
-                    <input type="password" id="registerPassword" placeholder="Mật khẩu (ít nhất 6 ký tự)" required
-                        minlength="6">
+                    <label for="registerPassword">Mật khẩu</label>
+                    <input type="password" id="registerPassword" placeholder="Nhập mật khẩu (ít nhất 6 ký tự)" required minlength="6">
                     <small class="form-text">Mật khẩu phải có ít nhất 6 ký tự</small>
                 </div>
                 <div class="form-group">
-                    <input type="password" id="registerConfirmPassword" placeholder="Xác nhận mật khẩu" required
-                        minlength="6">
+                    <label for="registerConfirmPassword">Xác nhận mật khẩu</label>
+                    <input type="password" id="registerConfirmPassword" placeholder="Nhập lại mật khẩu" required minlength="6">
                     <small class="form-text">Nhập lại mật khẩu để xác nhận</small>
                 </div>
-                <button type="submit" id="registerButton" class="btn btn-primary">
+                <button type="submit" id="registerButton" class="btn btn-primary btn-auth">
                     <span id="registerText">Đăng ký</span>
                     <span id="registerLoading" class="loading" style="display: none;"></span>
                 </button>
             </form>
             <div class="error-message" id="registerError"></div>
             <div class="auth-switch">
-                <p>Đã có tài khoản? <a id="showLogin">Đăng nhập</a></p>
+                <p>Đã có tài khoản? <a href="#" id="showLogin">Đăng nhập</a></p>
             </div>
         </div>
     </div>
 
     <!-- Main App - ẨN MẶC ĐỊNH -->
-    <div id="mainApp">
+    <div id="mainApp" style="display: none;">
         <!-- Header với user info và logout -->
         <header class="app-header">
             <div class="header-content">
@@ -159,14 +169,14 @@
                                     <div class="icon">📹</div>
                                     <div>
                                         <h4>Chưa có video được chọn</h4>
-                                        <p>Vui lòng chọn một session từ danh sách bên trái để xem video và thông tin chi
-                                            tiết.</p>
+                                        <p>Vui lòng chọn một session từ danh sách bên trái để xem video và thông tin chi tiết.</p>
                                     </div>
                                 </div>
                             </div>
                         </div>
                     </div>
                 </div>
+                
                 <!-- Modal xác nhận xóa -->
                 <div id="deleteModal" class="modal">
                     <div class="modal-content">
@@ -179,8 +189,7 @@
                             <div class="session-info" id="deleteSessionInfo">
                                 <!-- Thông tin session sẽ được điền ở đây -->
                             </div>
-                            <p class="warning-text">⚠️ Hành động này không thể hoàn tác! Video và dữ liệu sẽ bị xóa vĩnh
-                                viễn.</p>
+                            <p class="warning-text">⚠️ Hành động này không thể hoàn tác! Video và dữ liệu sẽ bị xóa vĩnh viễn.</p>
                         </div>
                         <div class="modal-footer">
                             <button id="confirmDelete" class="btn btn-danger">Xác nhận xóa</button>
@@ -202,6 +211,10 @@
             }
 
             initializeAuth() {
+                console.log('🔐 Initializing AuthManager...');
+                console.log('Token:', this.token ? 'Present' : 'Not found');
+                console.log('User:', this.user);
+                
                 if (this.token && this.user) {
                     this.showMainApp();
                 } else {
@@ -211,69 +224,110 @@
             }
 
             setupEventListeners() {
+                console.log('🔗 Setting up auth event listeners...');
+                
                 // Login form
-                document.getElementById('loginFormElement').addEventListener('submit', (e) => {
-                    e.preventDefault();
-                    this.login();
-                });
+                const loginForm = document.getElementById('loginFormElement');
+                if (loginForm) {
+                    loginForm.addEventListener('submit', (e) => {
+                        e.preventDefault();
+                        this.login();
+                    });
+                }
 
                 // Register form
-                document.getElementById('registerFormElement').addEventListener('submit', (e) => {
-                    e.preventDefault();
-                    this.register();
-                });
+                const registerForm = document.getElementById('registerFormElement');
+                if (registerForm) {
+                    registerForm.addEventListener('submit', (e) => {
+                        e.preventDefault();
+                        this.register();
+                    });
+                }
 
                 // Switch between forms
-                document.getElementById('showRegister').addEventListener('click', () => {
-                    this.showForm('register');
-                });
+                const showRegister = document.getElementById('showRegister');
+                if (showRegister) {
+                    showRegister.addEventListener('click', (e) => {
+                        e.preventDefault();
+                        this.showForm('register');
+                    });
+                }
 
-                document.getElementById('showLogin').addEventListener('click', () => {
-                    this.showForm('login');
-                });
+                const showLogin = document.getElementById('showLogin');
+                if (showLogin) {
+                    showLogin.addEventListener('click', (e) => {
+                        e.preventDefault();
+                        this.showForm('login');
+                    });
+                }
 
                 // Logout button
-                document.getElementById('logoutButton').addEventListener('click', () => {
-                    this.logout();
-                });
+                const logoutButton = document.getElementById('logoutButton');
+                if (logoutButton) {
+                    logoutButton.addEventListener('click', () => {
+                        this.logout();
+                    });
+                }
 
                 // Real-time password confirmation check
-                document.getElementById('registerConfirmPassword').addEventListener('input', () => {
-                    this.validatePasswordMatch();
-                });
+                const confirmPassword = document.getElementById('registerConfirmPassword');
+                if (confirmPassword) {
+                    confirmPassword.addEventListener('input', () => {
+                        this.validatePasswordMatch();
+                    });
+                }
 
-                document.getElementById('registerPassword').addEventListener('input', () => {
-                    this.validatePasswordMatch();
-                });
+                const password = document.getElementById('registerPassword');
+                if (password) {
+                    password.addEventListener('input', () => {
+                        this.validatePasswordMatch();
+                    });
+                }
             }
 
             validatePasswordMatch() {
-                const password = document.getElementById('registerPassword').value;
-                const confirmPassword = document.getElementById('registerConfirmPassword').value;
-                const confirmPasswordField = document.getElementById('registerConfirmPassword');
+                const password = document.getElementById('registerPassword');
+                const confirmPassword = document.getElementById('registerConfirmPassword');
+                
+                if (!password || !confirmPassword) return;
 
-                if (confirmPassword && password !== confirmPassword) {
-                    confirmPasswordField.style.borderColor = '#dc3545';
+                const passwordValue = password.value;
+                const confirmPasswordValue = confirmPassword.value;
+
+                if (confirmPasswordValue && passwordValue !== confirmPasswordValue) {
+                    confirmPassword.style.borderColor = '#dc3545';
                 } else {
-                    confirmPasswordField.style.borderColor = '';
+                    confirmPassword.style.borderColor = '';
                 }
             }
 
             showForm(formType) {
-                document.getElementById('loginForm').classList.remove('active');
-                document.getElementById('registerForm').classList.remove('active');
-                document.getElementById(formType + 'Form').classList.add('active');
+                console.log(`🔄 Switching to ${formType} form`);
+                
+                const loginForm = document.getElementById('loginForm');
+                const registerForm = document.getElementById('registerForm');
+                
+                if (loginForm) loginForm.classList.remove('active');
+                if (registerForm) registerForm.classList.remove('active');
+                
+                const targetForm = document.getElementById(formType + 'Form');
+                if (targetForm) {
+                    targetForm.classList.add('active');
+                }
+                
                 this.clearErrors();
                 this.clearFormStyles();
             }
 
             clearErrors() {
-                document.getElementById('loginError').textContent = '';
-                document.getElementById('registerError').textContent = '';
+                const loginError = document.getElementById('loginError');
+                const registerError = document.getElementById('registerError');
+                
+                if (loginError) loginError.textContent = '';
+                if (registerError) registerError.textContent = '';
             }
 
             clearFormStyles() {
-                // Reset border colors
                 const inputs = document.querySelectorAll('#registerForm input');
                 inputs.forEach(input => {
                     input.style.borderColor = '';
@@ -285,21 +339,30 @@
                 const loadingElement = document.getElementById(buttonType + 'Loading');
                 const buttonElement = document.getElementById(buttonType + 'Button');
 
-                if (isLoading) {
-                    textElement.style.display = 'none';
-                    loadingElement.style.display = 'inline-block';
-                    buttonElement.disabled = true;
-                } else {
-                    textElement.style.display = 'inline-block';
-                    loadingElement.style.display = 'none';
-                    buttonElement.disabled = false;
+                if (textElement && loadingElement && buttonElement) {
+                    if (isLoading) {
+                        textElement.style.display = 'none';
+                        loadingElement.style.display = 'inline-block';
+                        buttonElement.disabled = true;
+                    } else {
+                        textElement.style.display = 'inline-block';
+                        loadingElement.style.display = 'none';
+                        buttonElement.disabled = false;
+                    }
                 }
             }
 
             async login() {
-                const username = document.getElementById('loginUsername').value;
-                const password = document.getElementById('loginPassword').value;
+                console.log('🔐 Attempting login...');
+                
+                const username = document.getElementById('loginUsername')?.value;
+                const password = document.getElementById('loginPassword')?.value;
                 const errorElement = document.getElementById('loginError');
+
+                if (!username || !password) {
+                    if (errorElement) errorElement.textContent = 'Vui lòng nhập đầy đủ thông tin';
+                    return;
+                }
 
                 this.showLoading('login', true);
                 this.clearErrors();
@@ -316,38 +379,48 @@
                     const data = await response.json();
 
                     if (response.ok) {
+                        console.log('✅ Login successful');
                         this.token = data.token;
                         this.user = data.user;
                         localStorage.setItem('authToken', this.token);
                         localStorage.setItem('user', JSON.stringify(this.user));
                         this.showMainApp();
                     } else {
-                        errorElement.textContent = data.error || 'Đăng nhập thất bại';
+                        console.error('❌ Login failed:', data.error);
+                        if (errorElement) errorElement.textContent = data.error || 'Đăng nhập thất bại';
                     }
                 } catch (error) {
-                    errorElement.textContent = 'Lỗi kết nối đến server';
+                    console.error('❌ Network error:', error);
+                    if (errorElement) errorElement.textContent = 'Lỗi kết nối đến server';
                 } finally {
                     this.showLoading('login', false);
                 }
             }
 
             async register() {
-                const username = document.getElementById('registerUsername').value;
-                const nickname = document.getElementById('registerNickname').value;
-                const email = document.getElementById('registerEmail').value;
-                const phone = document.getElementById('registerPhone').value;
-                const password = document.getElementById('registerPassword').value;
-                const confirmPassword = document.getElementById('registerConfirmPassword').value;
+                console.log('📝 Attempting registration...');
+                
+                const username = document.getElementById('registerUsername')?.value;
+                const nickname = document.getElementById('registerNickname')?.value;
+                const email = document.getElementById('registerEmail')?.value;
+                const phone = document.getElementById('registerPhone')?.value;
+                const password = document.getElementById('registerPassword')?.value;
+                const confirmPassword = document.getElementById('registerConfirmPassword')?.value;
                 const errorElement = document.getElementById('registerError');
 
                 // Client-side validation
+                if (!username || !nickname || !email || !phone || !password || !confirmPassword) {
+                    if (errorElement) errorElement.textContent = 'Vui lòng nhập đầy đủ thông tin';
+                    return;
+                }
+
                 if (password !== confirmPassword) {
-                    errorElement.textContent = 'Mật khẩu xác nhận không khớp';
+                    if (errorElement) errorElement.textContent = 'Mật khẩu xác nhận không khớp';
                     return;
                 }
 
                 if (password.length < 6) {
-                    errorElement.textContent = 'Mật khẩu phải có ít nhất 6 ký tự';
+                    if (errorElement) errorElement.textContent = 'Mật khẩu phải có ít nhất 6 ký tự';
                     return;
                 }
 
@@ -372,35 +445,52 @@
                     const data = await response.json();
 
                     if (response.ok) {
+                        console.log('✅ Registration successful');
                         this.token = data.token;
                         this.user = data.user;
                         localStorage.setItem('authToken', this.token);
                         localStorage.setItem('user', JSON.stringify(this.user));
                         this.showMainApp();
                     } else {
-                        errorElement.textContent = data.error || 'Đăng ký thất bại';
+                        console.error('❌ Registration failed:', data.error);
+                        if (errorElement) errorElement.textContent = data.error || 'Đăng ký thất bại';
                     }
                 } catch (error) {
-                    errorElement.textContent = 'Lỗi kết nối đến server';
+                    console.error('❌ Network error:', error);
+                    if (errorElement) errorElement.textContent = 'Lỗi kết nối đến server';
                 } finally {
                     this.showLoading('register', false);
                 }
             }
 
             showMainApp() {
-                document.getElementById('authContainer').style.display = 'none';
-                document.getElementById('mainApp').style.display = 'block';
+                console.log('🚀 Showing main application...');
+                
+                const authContainer = document.getElementById('authContainer');
+                const mainApp = document.getElementById('mainApp');
+                const usernameDisplay = document.getElementById('usernameDisplay');
+                
+                if (authContainer) authContainer.style.display = 'none';
+                if (mainApp) mainApp.style.display = 'block';
+                
                 // Hiển thị nickname thay vì username
-                document.getElementById('usernameDisplay').textContent = this.user.nickname || this.user.username;
+                if (usernameDisplay && this.user) {
+                    usernameDisplay.textContent = this.user.nickname || this.user.username;
+                }
 
+                // Khởi tạo main app nếu chưa có
                 if (typeof window.faceDetectionApp === 'undefined') {
-                    console.log('🚀 Initializing main application...');
+                    console.log('🎯 Initializing main application...');
                     setTimeout(() => {
                         try {
                             window.faceDetectionApp = new FaceDetectionApp();
                             console.log('✅ Main app initialized successfully');
-                            window.faceDetectionApp.switchTab('live');
-                            window.faceDetectionApp.loadVideoHistory();
+                            if (window.faceDetectionApp.switchTab) {
+                                window.faceDetectionApp.switchTab('live');
+                            }
+                            if (window.faceDetectionApp.loadVideoHistory) {
+                                window.faceDetectionApp.loadVideoHistory();
+                            }
                         } catch (error) {
                             console.error('❌ Error initializing main app:', error);
                         }
@@ -409,16 +499,28 @@
             }
 
             showAuth() {
-                document.getElementById('mainApp').style.display = 'none';
-                document.getElementById('authContainer').style.display = 'block';
+                console.log('🔐 Showing auth forms...');
+                
+                const mainApp = document.getElementById('mainApp');
+                const authContainer = document.getElementById('authContainer');
+                
+                if (mainApp) mainApp.style.display = 'none';
+                if (authContainer) authContainer.style.display = 'block';
+                
                 this.showForm('login');
                 this.clearErrors();
                 this.clearFormStyles();
-                document.getElementById('loginFormElement').reset();
-                document.getElementById('registerFormElement').reset();
+                
+                // Reset forms
+                const loginForm = document.getElementById('loginFormElement');
+                const registerForm = document.getElementById('registerFormElement');
+                if (loginForm) loginForm.reset();
+                if (registerForm) registerForm.reset();
             }
 
             logout() {
+                console.log('🚪 Logging out...');
+                
                 localStorage.removeItem('authToken');
                 localStorage.removeItem('user');
                 this.token = null;
@@ -429,6 +531,7 @@
 
         // 🚀 KHỞI CHẠY: Luôn khởi tạo AuthManager đầu tiên
         document.addEventListener('DOMContentLoaded', () => {
+            console.log('📄 DOM fully loaded, initializing AuthManager...');
             window.authManager = new AuthManager();
         });
     </script>
