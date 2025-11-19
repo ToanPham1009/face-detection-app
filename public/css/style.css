@@ -624,13 +624,13 @@ h1 {
 }
 
 .error-message {
-    color: #fffcfc;
+    color: #e76363;
     text-align: center;
     margin: 1.5rem 0;
     font-size: 0.9rem;
     padding: 0.75rem;
-    background: #f8d7da;
-    border: 1px solid #f5c6cb;
+    background: #fcfcfc;
+    border: 1px solid #f7f7f7;
     border-radius: 6px;
 }
 
