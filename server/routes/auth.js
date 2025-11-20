@@ -53,45 +53,83 @@ router.post('/register', async (req, res) => {
   }
 });
 
-// Đăng nhập
+// Đăng nhập - SỬA LẠI ĐỂ HỖ TRỢ CẢ USERNAME VÀ EMAIL
 router.post('/login', async (req, res) => {
   try {
-    const { email, password } = req.body;
+    const { username, email, password } = req.body;
 
-    if (!email || !password) {
-      return res.status(400).json({ error: 'Email and password are required' });
+    console.log('🔐 Login attempt received:', { username, email });
+
+    // Kiểm tra đầu vào - cho phép cả username hoặc email
+    if ((!username && !email) || !password) {
+      return res.status(400).json({ 
+        error: 'Username/Email and password are required' 
+      });
     }
 
-    // Find user
-    const user = await pool.query('SELECT * FROM users WHERE email = $1', [email]);
-
-    if (user.rows.length === 0) {
-      return res.status(401).json({ error: 'Invalid credentials' });
+    let user;
+    
+    // Tìm user bằng username hoặc email
+    if (username) {
+      // Tìm bằng username
+      const userResult = await pool.query(
+        'SELECT * FROM users WHERE username = $1', 
+        [username]
+      );
+      user = userResult.rows[0];
+      console.log('🔍 Searching by username:', username, 'Found:', !!user);
+    } else {
+      // Tìm bằng email
+      const userResult = await pool.query(
+        'SELECT * FROM users WHERE email = $1', 
+        [email]
+      );
+      user = userResult.rows[0];
+      console.log('🔍 Searching by email:', email, 'Found:', !!user);
     }
 
-    // Check password
-    const isValidPassword = await bcrypt.compare(password, user.rows[0].password);
+    if (!user) {
+      console.log('❌ User not found');
+      return res.status(401).json({ 
+        error: 'Invalid username/email or password' 
+      });
+    }
+
+    // Kiểm tra mật khẩu
+    const isValidPassword = await bcrypt.compare(password, user.password);
+    console.log('🔑 Password valid:', isValidPassword);
 
     if (!isValidPassword) {
-      return res.status(401).json({ error: 'Invalid credentials' });
+      return res.status(401).json({ 
+        error: 'Invalid username/email or password' 
+      });
     }
 
-    // Generate token
-    const token = jwt.sign({ userId: user.rows[0].id }, JWT_SECRET, { expiresIn: '24h' });
+    // Tạo token
+    const token = jwt.sign({ 
+      userId: user.id,
+      username: user.username,
+      email: user.email
+    }, JWT_SECRET, { expiresIn: '24h' });
+
+    console.log('✅ Login successful for user:', user.username);
 
     res.json({
       message: 'Login successful',
       user: {
-        id: user.rows[0].id,
-        username: user.rows[0].username,
-        email: user.rows[0].email
+        id: user.id,
+        username: user.username,
+        email: user.email
       },
       token
     });
 
   } catch (error) {
-    console.error('Login error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    console.error('❌ Login error:', error);
+    res.status(500).json({ 
+      error: 'Internal server error',
+      details: error.message 
+    });
   }
 });
 
