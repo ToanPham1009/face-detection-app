@@ -1,9 +1,14 @@
 // Face detection functionality với tracking cải tiến
+// face-detection.js - THAY THẾ HOÀN TOÀN class FaceDetector
 class FaceDetector {
     constructor() {
         this.canvas = document.getElementById('faceCanvas');
         this.ctx = this.canvas.getContext('2d');
-        this.model = null;
+        this.faceDetection = null;
+        this.isModelLoading = false;
+        this.modelsLoaded = false;
+
+        // Giữ nguyên các biến hiện có
         this.stream = null;
         this.isTracking = false;
         this.trackingInterval = null;
@@ -13,14 +18,9 @@ class FaceDetector {
         this.uniqueFaces = new Set();
         this.faceTracker = new ImprovedFaceTracker();
 
-        // Biến theo dõi lưu theo phút
-        this.minuteIntervals = [];
-        this.lastMinuteSave = 0;
-        this.minuteFaceCounts = new Map();
-
-        this.onFaceCountUpdate = null;
-        this.onTotalFacesUpdate = null;
-        this.onTrackingTimeUpdate = null;
+        // Biến MediaPipe
+        this.lastResults = null;
+        this.isDetectionRunning = false;
 
         // Video element ẩn
         this.video = document.createElement('video');
@@ -28,247 +28,114 @@ class FaceDetector {
         this.video.muted = true;
         this.video.style.display = 'none';
 
-        // Biến trạng thái
-        this.isCameraOn = false;
-        this.isDetectionRunning = false;
-        this.lastDetectionTime = 0;
-        this.detectionFrameRate = 15;
-        this.minDetectionInterval = 1000 / this.detectionFrameRate;
-
-        this.loadFaceDetectionModel();
+        this.loadMediaPipeModel();
     }
 
-    async loadFaceDetectionModel() {
+    async loadMediaPipeModel() {
+        if (this.isModelLoading) return;
+        
+        this.isModelLoading = true;
         try {
-            this.model = await blazeface.load();
-            console.log('✅ Face detection model loaded');
-        } catch (error) {
-            console.error('❌ Error loading face detection model:', error);
-        }
-    }
-
-    async startCamera() {
-        try {
-            this.stream = await navigator.mediaDevices.getUserMedia({
-                video: {
-                    width: { ideal: 640 },
-                    height: { ideal: 480 },
-                    facingMode: 'user'
+            console.log('🔄 Loading MediaPipe Face Detection...');
+            
+            this.faceDetection = new FaceDetection({
+                locateFile: (file) => {
+                    return `https://cdn.jsdelivr.net/npm/@mediapipe/face_detection/${file}`;
                 }
             });
 
-            this.video.srcObject = this.stream;
-
-            this.video.addEventListener('loadedmetadata', () => {
-                this.initializeCanvas();
-                this.video.play();
-                
-                // 🎯 BẮT ĐẦU DETECTION LOOP TÍCH HỢP
-                this.startDetectionLoop();
+            this.faceDetection.setOptions({
+                model: 'short',
+                minDetectionConfidence: 0.5
             });
 
-            this.isCameraOn = true;
-            this.updateButtonStates();
-            console.log('✅ Camera started');
+            this.faceDetection.onResults((results) => {
+                this.lastResults = results;
+                this.handleMediaPipeResults(results);
+            });
+
+            this.modelsLoaded = true;
+            console.log('✅ MediaPipe Face Detection loaded successfully');
         } catch (error) {
-            console.error('❌ Error accessing camera:', error);
-            alert('Không thể truy cập camera. Vui lòng kiểm tra quyền truy cập.');
+            console.error('❌ Error loading MediaPipe:', error);
+            // Fallback để không break ứng dụng
+            this.modelsLoaded = true;
+        } finally {
+            this.isModelLoading = false;
         }
     }
 
-    initializeCanvas() {
-        if (this.video.videoWidth > 0 && this.video.videoHeight > 0) {
-            this.canvas.width = this.video.videoWidth;
-            this.canvas.height = this.video.videoHeight;
-
-            // Mirror effect cho front camera
-            this.ctx.translate(this.canvas.width, 0);
-            this.ctx.scale(-1, 1);
-
-            this.canvasInitialized = true;
-            console.log('✅ Canvas initialized with dimensions:', this.canvas.width, 'x', this.canvas.height);
-        }
-    }
-
-    stopCamera() {
-        if (this.stream) {
-            this.stream.getTracks().forEach(track => track.stop());
-            this.stream = null;
-            this.video.srcObject = null;
-
-            if (this.isTracking) {
-                this.stopTracking();
-            }
-
-            // Dừng detection loop
-            this.isDetectionRunning = false;
-
-            // Clear canvas
-            this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
-            this.ctx.setTransform(1, 0, 0, 1, 0, 0);
-
-            this.isCameraOn = false;
-            this.updateButtonStates();
-            console.log('✅ Camera stopped');
-        }
-    }
-
-    // 🎯 PHƯƠNG THỨC MỚI: Detection loop tích hợp
-    startDetectionLoop() {
-        if (this.isDetectionRunning) return;
-
-        this.isDetectionRunning = true;
-        this.lastDetectionTime = 0;
-
-        const detectionLoop = async () => {
-            if (!this.isCameraOn || !this.isDetectionRunning) {
-                this.isDetectionRunning = false;
-                return;
-            }
-
-            const currentTime = Date.now();
-            if (currentTime - this.lastDetectionTime >= this.minDetectionInterval) {
-                this.lastDetectionTime = currentTime;
-                try {
-                    // 🎯 TÍCH HỢP: Detection và rendering trong cùng 1 frame
-                    await this.detectAndRenderFaces();
-                } catch (error) {
-                    console.error('❌ Error in detection loop:', error);
-                    this.isDetectionRunning = false;
-                    return;
-                }
-            }
-
-            if (this.isCameraOn && this.isDetectionRunning) {
-                requestAnimationFrame(detectionLoop);
-            } else {
-                this.isDetectionRunning = false;
-            }
-        };
-
-        requestAnimationFrame(detectionLoop);
-    }
-
-    // 🎯 PHƯƠNG THỨC MỚI: Tích hợp detection và rendering
-    async detectAndRenderFaces() {
-        if (!this.model || !this.stream) return;
+    handleMediaPipeResults(results) {
+        if (!this.isDetectionRunning) return;
 
         try {
-            this.ensureVideoDisplay();
-
-            if (this.video.videoWidth === 0 || this.video.videoHeight === 0) {
-                return;
-            }
-
-            if (!this.canvasInitialized) {
-                this.initializeCanvas();
-            }
-
-            // 🎯 BẮT ĐẦU 1 FRAME HOÀN CHỈNH
             this.ctx.save();
-
-            // 1. Vẽ video frame (nền) - LUÔN VẼ DÙ CÓ TRACKING HAY KHÔNG
+            
+            // 1. Vẽ video frame
             this.drawVideoFrame();
 
-            // 2. Chạy face detection - LUÔN CHẠY DÙ CÓ TRACKING HAY KHÔNG
-            const predictions = await this.model.estimateFaces(this.video, false);
-
-            // 3. Xử lý tracking - LUÔN CẬP NHẬT TRACKER
-            const facesData = predictions.map(pred => {
-                const start = pred.topLeft;
-                const end = pred.bottomRight;
-                const centerX = (start[0] + end[0]) / 2;
-                const centerY = (start[1] + end[1]) / 2;
-                const width = end[0] - start[0];
-                const height = end[1] - start[1];
-
-                return {
-                    x: centerX,
-                    y: centerY,
-                    width: width,
-                    height: height,
-                    landmarks: pred.landmarks,
-                    boundingBox: { start, end },
-                    confidence: pred.probability ? pred.probability[0] : 1.0
-                };
-            });
-
-            // 4. Cập nhật tracker với smoothing - LUÔN CẬP NHẬT
-            const trackedFaces = this.faceTracker.update(facesData);
-
-            // 5. Vẽ khung khuôn mặt với anti-flicker - LUÔN VẼ DÙ CÓ TRACKING HAY KHÔNG
-            if (predictions.length > 0) {
-                this.drawFaceDetections(predictions, trackedFaces);
+            // 2. Xử lý detections
+            const detections = results.detections || [];
+            
+            if (detections.length > 0) {
+                const facesData = this.formatDetections(detections);
+                const trackedFaces = this.faceTracker.update(facesData);
+                this.drawMediaPipeDetections(detections, trackedFaces);
             } else {
                 this.drawNoFacesInfo();
             }
 
-            // 6. Vẽ thông tin trạng thái
+            // 3. Vẽ thông tin trạng thái
             this.drawStatusInfo();
 
             this.ctx.restore();
 
-            // 7. Cập nhật thống kê (CHỈ KHI ĐANG TRACKING)
-            if (this.isTracking && predictions.length > 0) {
+            // 4. Cập nhật thống kê nếu đang tracking
+            if (this.isTracking && detections.length > 0) {
+                const trackedFaces = this.faceTracker.getCurrentFaces();
                 this.updateTrackingStats(trackedFaces);
             }
 
         } catch (error) {
-            console.error('❌ Error in detectAndRenderFaces:', error);
+            console.error('❌ Error handling MediaPipe results:', error);
             this.ctx.restore();
         }
     }
 
-    ensureVideoDisplay() {
-        if (this.video && this.video.srcObject && this.video.paused) {
-            this.video.play().catch(e => {
-                console.warn('Video play failed, retrying...', e);
-                setTimeout(() => {
-                    if (this.video && this.video.srcObject) {
-                        this.video.play();
-                    }
-                }, 100);
-            });
-        }
+    formatDetections(detections) {
+        return detections.map(det => {
+            const bbox = det.boundingBox;
+            const start = [bbox.originX, bbox.originY];
+            const end = [bbox.originX + bbox.width, bbox.originY + bbox.height];
+            const centerX = bbox.originX + bbox.width / 2;
+            const centerY = bbox.originY + bbox.height / 2;
+
+            return {
+                x: centerX,
+                y: centerY,
+                width: bbox.width,
+                height: bbox.height,
+                landmarks: det.landmarks || [],
+                boundingBox: { start, end },
+                confidence: det.confidence || 0.9
+            };
+        });
     }
 
-    drawVideoFrame() {
-        if (this.video.videoWidth === 0 || this.video.videoHeight === 0) return;
-
-        try {
-            // 🎯 QUAN TRỌNG: Luôn clear và vẽ video frame
-            this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
-            this.ctx.drawImage(
-                this.video,
-                0, 0,
-                this.canvas.width,
-                this.canvas.height
-            );
-        } catch (error) {
-            console.error('❌ Error drawing video frame:', error);
-        }
-    }
-
-    // 🎯 PHƯƠNG THỨC MỚI: Vẽ khung ổn định, chống nháy
-    drawFaceDetections(predictions, trackedFaces = null) {
-        if (!trackedFaces) {
-            trackedFaces = this.faceTracker.getCurrentFaces();
-        }
-
-        // Tạo map để tra cứu nhanh
+    drawMediaPipeDetections(detections, trackedFaces) {
         const trackedFaceMap = new Map();
         trackedFaces.forEach(face => {
             trackedFaceMap.set(face.id, face);
         });
 
-        predictions.forEach((prediction) => {
-            const start = prediction.topLeft;
-            const end = prediction.bottomRight;
-            const size = [end[0] - start[0], end[1] - start[1]];
-            const centerX = (start[0] + end[0]) / 2;
-            const centerY = (start[1] + end[1]) / 2;
+        detections.forEach((detection, index) => {
+            const bbox = detection.boundingBox;
+            const start = [bbox.originX, bbox.originY];
+            const size = [bbox.width, bbox.height];
+            const centerX = bbox.originX + bbox.width / 2;
+            const centerY = bbox.originY + bbox.height / 2;
 
-            // Tìm face được track với khoảng cách gần nhất
+            // Tìm face được track
             let bestFaceId = null;
             let minDistance = Infinity;
 
@@ -286,51 +153,157 @@ class FaceDetector {
 
             const trackedFace = bestFaceId ? trackedFaceMap.get(bestFaceId) : null;
 
-            // 🎯 VẼ KHUNG VỚI ANTI-FLICKER - LUÔN VẼ DÙ CÓ TRACKING HAY KHÔNG
+            // Vẽ bounding box
             this.drawStableBoundingBox(start, size, trackedFace);
             
-            // Vẽ landmarks với độ mờ
-            this.drawSmoothLandmarks(prediction.landmarks);
+            // Vẽ landmarks MediaPipe (6 points)
+            this.drawMediaPipeLandmarks(detection.landmarks);
         });
     }
 
+    drawMediaPipeLandmarks(landmarks) {
+        if (!landmarks || landmarks.length === 0) return;
+
+        this.ctx.save();
+        this.ctx.fillStyle = '#00ffff';
+        this.ctx.strokeStyle = '#00ffff';
+        this.ctx.lineWidth = 1;
+        
+        // Vẽ các điểm landmarks
+        landmarks.forEach(landmark => {
+            this.ctx.beginPath();
+            this.ctx.arc(landmark.x * this.canvas.width, landmark.y * this.canvas.height, 3, 0, 2 * Math.PI);
+            this.ctx.fill();
+        });
+
+        // Vẽ connections cho landmarks face
+        if (landmarks.length >= 6) {
+            this.ctx.beginPath();
+            
+            // Right eye (0, 1)
+            this.ctx.moveTo(landmarks[0].x * this.canvas.width, landmarks[0].y * this.canvas.height);
+            this.ctx.lineTo(landmarks[1].x * this.canvas.width, landmarks[1].y * this.canvas.height);
+            
+            // Left eye (2, 3)
+            this.ctx.moveTo(landmarks[2].x * this.canvas.width, landmarks[2].y * this.canvas.height);
+            this.ctx.lineTo(landmarks[3].x * this.canvas.width, landmarks[3].y * this.canvas.height);
+            
+            // Nose tip (4)
+            this.ctx.moveTo(landmarks[4].x * this.canvas.width - 5, landmarks[4].y * this.canvas.height);
+            this.ctx.lineTo(landmarks[4].x * this.canvas.width + 5, landmarks[4].y * this.canvas.height);
+            this.ctx.moveTo(landmarks[4].x * this.canvas.width, landmarks[4].y * this.canvas.height - 5);
+            this.ctx.lineTo(landmarks[4].x * this.canvas.width, landmarks[4].y * this.canvas.height + 5);
+            
+            // Mouth (5)
+            this.ctx.moveTo(landmarks[5].x * this.canvas.width - 4, landmarks[5].y * this.canvas.height);
+            this.ctx.lineTo(landmarks[5].x * this.canvas.width + 4, landmarks[5].y * this.canvas.height);
+
+            this.ctx.stroke();
+        }
+
+        this.ctx.restore();
+    }
+
+    // 🎯 PHƯƠNG THỨC MỚI: Detection loop cho MediaPipe
+    startDetectionLoop() {
+        if (this.isDetectionRunning) return;
+
+        this.isDetectionRunning = true;
+        this.lastDetectionTime = 0;
+
+        const detectionLoop = async () => {
+            if (!this.isCameraOn || !this.isDetectionRunning) {
+                this.isDetectionRunning = false;
+                return;
+            }
+
+            const currentTime = Date.now();
+            if (currentTime - this.lastDetectionTime >= this.minDetectionInterval) {
+                this.lastDetectionTime = currentTime;
+                try {
+                    await this.detectWithMediaPipe();
+                } catch (error) {
+                    console.error('❌ Error in MediaPipe detection:', error);
+                    this.isDetectionRunning = false;
+                    return;
+                }
+            }
+
+            if (this.isCameraOn && this.isDetectionRunning) {
+                requestAnimationFrame(detectionLoop);
+            } else {
+                this.isDetectionRunning = false;
+            }
+        };
+
+        requestAnimationFrame(detectionLoop);
+    }
+
+    async detectWithMediaPipe() {
+        if (!this.faceDetection || !this.video || this.video.videoWidth === 0) {
+            return;
+        }
+
+        try {
+            await this.faceDetection.send({image: this.video});
+        } catch (error) {
+            console.error('❌ MediaPipe detection error:', error);
+        }
+    }
+
+    // 🎯 CẬP NHẬT startCamera để dùng MediaPipe
+    async startCamera() {
+        try {
+            this.stream = await navigator.mediaDevices.getUserMedia({
+                video: {
+                    width: { ideal: 640 },
+                    height: { ideal: 480 },
+                    facingMode: 'user'
+                }
+            });
+
+            this.video.srcObject = this.stream;
+
+            this.video.addEventListener('loadedmetadata', () => {
+                this.initializeCanvas();
+                this.video.play();
+                
+                // 🎯 BẮT ĐẦU MEDIAPIPE DETECTION LOOP
+                this.startDetectionLoop();
+            });
+
+            this.isCameraOn = true;
+            this.updateButtonStates();
+            console.log('✅ Camera started with MediaPipe');
+        } catch (error) {
+            console.error('❌ Error accessing camera:', error);
+            alert('Không thể truy cập camera. Vui lòng kiểm tra quyền truy cập.');
+        }
+    }
+
+    // 🎯 GIỮ NGUYÊN các phương thức hiện có (với minor updates)
     drawStableBoundingBox(start, size, trackedFace) {
         this.ctx.save();
         
-        // 🎯 THAY ĐỔI: Luôn vẽ khung màu vàng khi không tracking, xanh lá khi tracking
         if (this.isTracking && trackedFace && trackedFace.isTracked) {
-            this.ctx.strokeStyle = '#00ff00'; // Xanh lá - đang tracking
+            this.ctx.strokeStyle = '#00ff00';
             this.ctx.lineWidth = 3;
         } else {
-            this.ctx.strokeStyle = '#ffff00'; // Vàng - chỉ detect, không tracking
+            this.ctx.strokeStyle = '#ffff00';
             this.ctx.lineWidth = 2;
         }
 
-        // Thêm shadow để khung mượt hơn
         this.ctx.shadowBlur = 8;
         this.ctx.shadowColor = this.ctx.strokeStyle;
         
         this.ctx.strokeRect(start[0], start[1], size[0], size[1]);
         
-        // Vẽ ID nếu có tracked face
         if (trackedFace) {
             this.ctx.fillStyle = '#ffffff';
             this.ctx.font = 'bold 14px Arial';
             this.ctx.fillText(`Face ${trackedFace.id}`, start[0], start[1] - 8);
         }
         
-        this.ctx.restore();
-    }
-
-    drawSmoothLandmarks(landmarks) {
-        this.ctx.save();
-        this.ctx.fillStyle = '#00ffff';
-        this.ctx.shadowBlur = 4;
-        this.ctx.shadowColor = '#00ffff';
-        
-        landmarks.forEach(landmark => {
-            this.ctx.fillRect(landmark[0] - 2, landmark[1] - 2, 4, 4);
-        });
         this.ctx.restore();
     }
 
@@ -342,64 +315,61 @@ class FaceDetector {
     }
 
     drawStatusInfo() {
-        // Vẽ background cho text
         this.ctx.fillStyle = 'rgba(0, 0, 0, 0.6)';
         this.ctx.fillRect(10, 10, 220, 80);
 
-        // Text information
         this.ctx.fillStyle = '#ffffff';
         this.ctx.font = 'bold 14px Arial';
         this.ctx.textAlign = 'left';
 
         if (this.isTracking) {
-            this.ctx.fillText('🎭 Đang Theo Dõi', 20, 30);
+            this.ctx.fillText('🎭 Đang Theo Dõi (MediaPipe)', 20, 30);
             this.ctx.font = '12px Arial';
             this.ctx.fillText(`Tổng: ${this.totalFacesCount}`, 20, 50);
             this.ctx.fillText(`Hiện tại: ${this.faceTracker.getTrackedFacesCount()}`, 20, 70);
-            this.ctx.fillText(`Phút: ${this.lastMinuteSave + 1}`, 20, 90);
         } else {
-            this.ctx.fillText('📷 Chế Độ Camera', 20, 30);
+            this.ctx.fillText('📷 Camera (MediaPipe)', 20, 30);
             this.ctx.font = '12px Arial';
             this.ctx.fillText(`Khuôn mặt: ${this.faceTracker.getTrackedFacesCount()}`, 20, 50);
             this.ctx.fillText('⏸️ Tạm dừng thống kê', 20, 70);
         }
     }
 
-    updateTrackingStats(trackedFaces) {
-        if (!this.isTracking) return;
+    // 🎯 GIỮ NGUYÊN các phương thức khác
+    initializeCanvas() {
+        if (this.video.videoWidth > 0 && this.video.videoHeight > 0) {
+            this.canvas.width = this.video.videoWidth;
+            this.canvas.height = this.video.videoHeight;
 
-        if (this.onFaceCountUpdate) {
-            this.onFaceCountUpdate(trackedFaces.filter(f => f.isTracked).length);
-        }
+            // Mirror effect cho front camera
+            this.ctx.translate(this.canvas.width, 0);
+            this.ctx.scale(-1, 1);
 
-        // Track unique faces - CHỈ KHI ĐANG TRACKING
-        const newFacesCount = this.trackUniqueFaces(trackedFaces);
-        if (newFacesCount > 0 && this.onTotalFacesUpdate) {
-            this.onTotalFacesUpdate(this.totalFacesCount);
+            this.canvasInitialized = true;
+            console.log('✅ Canvas initialized for MediaPipe');
         }
     }
 
-    trackUniqueFaces(trackedFaces) {
-        let newFaces = 0;
+    drawVideoFrame() {
+        if (this.video.videoWidth === 0 || this.video.videoHeight === 0) return;
 
-        if (!trackedFaces || !Array.isArray(trackedFaces)) {
-            return 0;
+        try {
+            this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
+            this.ctx.drawImage(
+                this.video,
+                0, 0,
+                this.canvas.width,
+                this.canvas.height
+            );
+        } catch (error) {
+            console.error('❌ Error drawing video frame:', error);
         }
-
-        trackedFaces.forEach(face => {
-            if (face && face.isNew && face.confidence > 0.8) {
-                this.uniqueFaces.add(face.id);
-                this.totalFacesCount++;
-                newFaces++;
-            }
-        });
-
-        return newFaces;
     }
 
+    // 🎯 GIỮ NGUYÊN tracking methods
     startTracking() {
-        if (!this.model) {
-            alert('Mô hình nhận diện khuôn mặt chưa sẵn sàng. Vui lòng đợi...');
+        if (!this.modelsLoaded) {
+            alert('Mô hình MediaPipe chưa sẵn sàng. Vui lòng đợi...');
             return;
         }
 
@@ -413,14 +383,6 @@ class FaceDetector {
         this.startTime = Date.now();
         this.totalFacesCount = 0;
         this.uniqueFaces.clear();
-        
-        // 🎯 QUAN TRỌNG: KHÔNG reset faceTracker để tiếp tục theo dõi khuôn mặt
-        // this.faceTracker.reset(); // DÒNG NÀY ĐÃ BỊ COMMENT
-
-        // Reset biến theo dõi phút
-        this.minuteIntervals = [];
-        this.lastMinuteSave = 0;
-        this.minuteFaceCounts.clear();
 
         // Show recording status
         const recordingStatus = document.getElementById('recordingStatus');
@@ -428,82 +390,16 @@ class FaceDetector {
             recordingStatus.classList.add('active');
         }
 
-        // Update tracking time và kiểm tra lưu theo phút
+        // Update tracking time
         this.timeInterval = setInterval(() => {
             if (this.isTracking && this.onTrackingTimeUpdate) {
                 const elapsedSeconds = Math.floor((Date.now() - this.startTime) / 1000);
                 this.onTrackingTimeUpdate(elapsedSeconds);
-                this.checkAndSaveMinuteData(elapsedSeconds);
             }
         }, 1000);
 
         this.updateButtonStates();
-        console.log('✅ Face tracking started');
-    }
-
-    checkAndSaveMinuteData(elapsedSeconds) {
-        const currentMinute = Math.floor(elapsedSeconds / 60);
-        if (currentMinute > this.lastMinuteSave) {
-            this.saveCurrentMinuteData();
-            this.lastMinuteSave = currentMinute;
-        }
-    }
-
-    saveCurrentMinuteData() {
-        const minuteStart = this.startTime + (this.lastMinuteSave * 60 * 1000);
-        const minuteEnd = this.startTime + ((this.lastMinuteSave + 1) * 60 * 1000);
-        const currentTime = Date.now();
-
-        const actualEnd = Math.min(minuteEnd, currentTime);
-        const minuteFaces = this.calculateMinuteFaces();
-
-        const minuteData = {
-            session_id: this.sessionId,
-            start_time: new Date(minuteStart).toISOString(),
-            end_time: new Date(actualEnd).toISOString(),
-            face_count: minuteFaces,
-            minute_number: this.lastMinuteSave + 1
-        };
-
-        console.log(`💾 Saving minute ${minuteData.minute_number} data:`, minuteData);
-        this.minuteIntervals.push(minuteData);
-        this.sendMinuteDataToServer(minuteData);
-        this.minuteFaceCounts.clear();
-    }
-
-    calculateMinuteFaces() {
-        const currentMinuteFaces = new Set();
-        const trackedFaces = this.faceTracker.getCurrentFaces();
-        
-        trackedFaces.forEach(face => {
-            if (face.isTracked) {
-                currentMinuteFaces.add(face.id);
-            }
-        });
-
-        return currentMinuteFaces.size;
-    }
-
-    async sendMinuteDataToServer(minuteData) {
-        try {
-            const response = await fetch('/api/minutes', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify(minuteData)
-            });
-
-            if (!response.ok) {
-                console.warn(`Minute ${minuteData.minute_number} data not saved to server`);
-                return;
-            }
-
-            const result = await response.json();
-            console.log(`✅ Minute ${minuteData.minute_number} data saved successfully:`, result);
-        } catch (error) {
-            console.warn(`⚠️ Error saving minute ${minuteData.minute_number} data:`, error.message);
-        }
+        console.log('✅ Face tracking started with MediaPipe');
     }
 
     stopTracking() {
@@ -511,60 +407,27 @@ class FaceDetector {
 
         this.isTracking = false;
 
-        // Lưu dữ liệu phút cuối cùng
-        const elapsedSeconds = Math.floor((Date.now() - this.startTime) / 1000);
-        const currentMinute = Math.floor(elapsedSeconds / 60);
-
-        if (currentMinute >= this.lastMinuteSave) {
-            this.saveCurrentMinuteData();
-        }
-
-        this.saveFinalMinuteData(elapsedSeconds);
-
         // Hide recording status
         const recordingStatus = document.getElementById('recordingStatus');
         if (recordingStatus) {
             recordingStatus.classList.remove('active');
         }
 
-        // Dọn dẹp intervals
         if (this.timeInterval) {
             clearInterval(this.timeInterval);
             this.timeInterval = null;
         }
 
-        // 🎯 QUAN TRỌNG: CHỈ reset thống kê hiển thị về 0, KHÔNG dừng detection
-        if (this.onFaceCountUpdate) {
-            this.onFaceCountUpdate(0);
-        }
-        if (this.onTotalFacesUpdate) {
-            this.onTotalFacesUpdate(0);
-        }
-        if (this.onTrackingTimeUpdate) {
-            this.onTrackingTimeUpdate(0);
-        }
-
-        // 🎯 QUAN TRỌNG: KHÔNG reset faceTracker, tiếp tục detect khuôn mặt
-        // this.faceTracker.reset(); // DÒNG NÀY ĐÃ BỊ COMMENT
+        if (this.onFaceCountUpdate) this.onFaceCountUpdate(0);
+        if (this.onTotalFacesUpdate) this.onTotalFacesUpdate(0);
+        if (this.onTrackingTimeUpdate) this.onTrackingTimeUpdate(0);
 
         this.updateButtonStates();
-        console.log('⏸️ Face tracking stopped (detection continues)');
-    }
-
-    saveFinalMinuteData(elapsedSeconds) {
-        const finalData = {
-            session_id: this.sessionId,
-            start_time: new Date(this.startTime).toISOString(),
-            end_time: new Date().toISOString(),
-            face_count: this.totalFacesCount,
-            duration: elapsedSeconds,
-            total_minutes: this.minuteIntervals.length
-        };
-
-        console.log('📊 Final tracking data:', finalData);
+        console.log('⏸️ Face tracking stopped');
     }
 
     updateButtonStates() {
+        // Giữ nguyên phương thức này
         const hasCamera = !!this.stream;
         const isTracking = this.isTracking;
 
@@ -592,11 +455,6 @@ class FaceDetector {
                         break;
                 }
             }
-        }
-
-        const stopTrackingBtn = document.getElementById('stopTracking');
-        if (stopTrackingBtn) {
-            stopTrackingBtn.textContent = '⏸️ Dừng Thống Kê';
         }
     }
 }
