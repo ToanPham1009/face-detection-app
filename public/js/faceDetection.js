@@ -689,6 +689,40 @@ class FaceDetector {
         this.onTrackingTimeUpdate = callbacks.onTrackingTimeUpdate;
         console.log('✅ Callbacks set successfully');
     }
+
+    updateTrackingStats(trackedFaces) {
+        if (!this.isTracking) return;
+
+        try {
+            // Cập nhật tổng số khuôn mặt
+            const currentFaceCount = trackedFaces.length;
+
+            // Thêm vào unique faces set
+            trackedFaces.forEach(face => {
+                this.uniqueFaces.add(face.id);
+            });
+
+            // Cập nhật tổng số khuôn mặt đếm được
+            this.totalFacesCount = Math.max(this.totalFacesCount, this.uniqueFaces.size);
+
+            // Gọi callback để cập nhật UI
+            if (this.onFaceCountUpdate) {
+                this.onFaceCountUpdate(currentFaceCount);
+            }
+
+            if (this.onTotalFacesUpdate) {
+                this.onTotalFacesUpdate(this.totalFacesCount);
+            }
+
+            // Log để debug
+            if (currentFaceCount > 0) {
+                console.log(`📊 Tracking stats - Current: ${currentFaceCount}, Total: ${this.totalFacesCount}`);
+            }
+
+        } catch (error) {
+            console.error('❌ Error updating tracking stats:', error);
+        }
+    }
 }
 
 // 🎯 CLASS TRACKER CẢI TIẾN với smoothing mạnh
@@ -948,39 +982,7 @@ class ImprovedFaceTracker {
         return Array.from(this.faces.values()).filter(face => face.isTracked).length;
     }
 
-    updateTrackingStats(trackedFaces) {
-        if (!this.isTracking) return;
-
-        try {
-            // Cập nhật tổng số khuôn mặt
-            const currentFaceCount = trackedFaces.length;
-
-            // Thêm vào unique faces set
-            trackedFaces.forEach(face => {
-                this.uniqueFaces.add(face.id);
-            });
-
-            // Cập nhật tổng số khuôn mặt đếm được
-            this.totalFacesCount = Math.max(this.totalFacesCount, this.uniqueFaces.size);
-
-            // Gọi callback để cập nhật UI
-            if (this.onFaceCountUpdate) {
-                this.onFaceCountUpdate(currentFaceCount);
-            }
-
-            if (this.onTotalFacesUpdate) {
-                this.onTotalFacesUpdate(this.totalFacesCount);
-            }
-
-            // Log để debug
-            if (currentFaceCount > 0) {
-                console.log(`📊 Tracking stats - Current: ${currentFaceCount}, Total: ${this.totalFacesCount}`);
-            }
-
-        } catch (error) {
-            console.error('❌ Error updating tracking stats:', error);
-        }
-    }
+    
 
 
 }
