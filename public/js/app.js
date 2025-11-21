@@ -167,7 +167,9 @@ class FaceDetectionApp {
             'startCamera': () => this.faceDetector.startCamera(),
             'stopCamera': () => this.faceDetector.stopCamera(),
             'startTracking': () => this.startTracking(),
-            'stopTracking': () => this.stopTracking()
+            'stopTracking': () => this.stopTracking(),
+            
+            'debugButton': () => this.faceDetector.debugVideoState() // THÊM DÒNG NÀY
         };
 
         for (const [id, handler] of Object.entries(elements)) {

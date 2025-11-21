@@ -28,6 +28,12 @@ class FaceDetector {
         this.video.muted = true;
         this.video.style.display = 'none';
 
+        // THÊM BIẾN NÀY
+        this.minDetectionInterval = 1000 / 15; // 15 FPS
+        this.canvasInitialized = false;
+
+        console.log('🎯 FaceDetector constructor completed');
+
         this.loadMediaPipeModel();
     }
 
@@ -206,13 +212,19 @@ class FaceDetector {
 
     // 🎯 PHƯƠNG THỨC MỚI: Detection loop cho MediaPipe
     startDetectionLoop() {
-        if (this.isDetectionRunning) return;
+        if (this.isDetectionRunning) {
+            console.log('⚠️ Detection loop already running');
+            return;
+        }
 
         this.isDetectionRunning = true;
         this.lastDetectionTime = 0;
 
-        const detectionLoop = async () => {
+        console.log('🔄 Starting MediaPipe detection loop...');
+
+        const detectionLoop = async (timestamp) => {
             if (!this.isCameraOn || !this.isDetectionRunning) {
+                console.log('🛑 Stopping detection loop - camera off');
                 this.isDetectionRunning = false;
                 return;
             }
@@ -220,55 +232,77 @@ class FaceDetector {
             const currentTime = Date.now();
             if (currentTime - this.lastDetectionTime >= this.minDetectionInterval) {
                 this.lastDetectionTime = currentTime;
+
                 try {
+                    // ĐẢM BẢO VIDEO ĐANG PLAY
+                    if (this.video.paused) {
+                        console.log('▶️ Video paused, attempting to play...');
+                        await this.video.play();
+                    }
+
+                    // GỌI MEDIAPIPE DETECTION
                     await this.detectWithMediaPipe();
+
                 } catch (error) {
                     console.error('❌ Error in MediaPipe detection:', error);
-                    this.isDetectionRunning = false;
-                    return;
                 }
             }
 
+            // TIẾP TỤC LOOP
             if (this.isCameraOn && this.isDetectionRunning) {
                 requestAnimationFrame(detectionLoop);
             } else {
                 this.isDetectionRunning = false;
+                console.log('🛑 Detection loop stopped');
             }
         };
 
+        // BẮT ĐẦU LOOP
         requestAnimationFrame(detectionLoop);
+        console.log('✅ Detection loop started');
     }
 
+
     async detectWithMediaPipe() {
-        if (!this.faceDetection || !this.video || this.video.videoWidth === 0) {
-            if (this.video && this.video.videoWidth === 0) {
-                console.log('⏳ Video not ready for detection');
-            }
+        if (!this.faceDetection) {
+            console.log('⏳ MediaPipe not ready yet');
+            return;
+        }
+
+        if (!this.video || this.video.videoWidth === 0) {
+            console.log('⏳ Video not ready for detection');
             return;
         }
 
         try {
+            // THÊM LOG ĐỂ DEBUG
+            console.log('🔍 Calling MediaPipe detection...');
+
             await this.faceDetection.send({ image: this.video });
+
         } catch (error) {
             console.error('❌ MediaPipe detection error:', error);
-            // Fallback: vẽ thông báo
+
+            // VẼ THÔNG BÁO LỖI
             this.ctx.fillStyle = '#ff0000';
-            this.ctx.font = '12px Arial';
-            this.ctx.fillText('MediaPipe Error - Retrying...', 20, this.canvas.height - 20);
+            this.ctx.font = '14px Arial';
+            this.ctx.fillText('MediaPipe Error - Check Console', 20, this.canvas.height - 30);
         }
     }
 
     // 🎯 CẬP NHẬT startCamera để dùng MediaPipe
+    // SỬA PHƯƠNG THỨC startCamera
     async startCamera() {
         try {
             console.log('🎯 Starting camera...');
 
-            // Stop camera trước nếu đang chạy
+            // Dừng camera trước nếu đang chạy
             if (this.stream) {
                 this.stopCamera();
-                await new Promise(resolve => setTimeout(resolve, 500)); // Chờ cleanup
+                await new Promise(resolve => setTimeout(resolve, 500));
             }
 
+            // LẤY CAMERA STREAM
             this.stream = await navigator.mediaDevices.getUserMedia({
                 video: {
                     width: { ideal: 640 },
@@ -281,72 +315,93 @@ class FaceDetector {
 
             console.log('✅ Camera stream obtained');
 
-            // Tạo video element mới nếu cần
+            // TẠO VIDEO ELEMENT
             if (!this.video || this.video.parentNode === null) {
                 this.video = document.createElement('video');
                 this.video.playsInline = true;
                 this.video.muted = true;
                 this.video.style.display = 'none';
                 document.body.appendChild(this.video);
+                console.log('✅ Video element created');
             }
 
             this.video.srcObject = this.stream;
 
-            // Đợi video ready
+            // ĐỢI VIDEO READY - QUAN TRỌNG!
             await new Promise((resolve, reject) => {
+                let resolved = false;
+
                 this.video.onloadedmetadata = () => {
-                    console.log('📹 Video metadata loaded:', this.video.videoWidth, 'x', this.video.videoHeight);
-                    resolve();
+                    if (!resolved) {
+                        console.log('📹 Video metadata loaded:', this.video.videoWidth, 'x', this.video.videoHeight);
+                        resolved = true;
+                        resolve();
+                    }
                 };
 
-                this.video.onerror = reject;
+                this.video.onloadeddata = () => {
+                    if (!resolved) {
+                        console.log('📹 Video data loaded');
+                        resolved = true;
+                        resolve();
+                    }
+                };
+
+                this.video.onerror = (error) => {
+                    console.error('❌ Video error:', error);
+                    if (!resolved) {
+                        reject(error);
+                    }
+                };
 
                 // Timeout fallback
                 setTimeout(() => {
-                    console.log('⚠️ Video metadata timeout, continuing anyway...');
-                    resolve();
-                }, 3000);
+                    if (!resolved) {
+                        console.log('⚠️ Video load timeout, continuing...');
+                        resolved = true;
+                        resolve();
+                    }
+                }, 5000);
             });
 
-            // Khởi tạo canvas
+            // KHỞI TẠO CANVAS
             this.initializeCanvas();
 
-            // Bắt đầu play video
+            // BẮT ĐẦU PLAY VIDEO
             try {
                 await this.video.play();
                 console.log('✅ Video playing successfully');
             } catch (playError) {
-                console.warn('⚠️ Video play failed, retrying...', playError);
-                // Thử lại sau 100ms
-                setTimeout(async () => {
-                    try {
-                        await this.video.play();
-                        console.log('✅ Video playing on retry');
-                    } catch (e) {
-                        console.error('❌ Video play failed completely:', e);
-                    }
-                }, 100);
+                console.error('❌ Video play failed:', playError);
+                throw playError;
             }
 
             this.isCameraOn = true;
 
-            // 🎯 QUAN TRỌNG: Đợi MediaPipe load xong mới start detection
+            // ĐỢI MEDIAPIPE LOAD
             if (!this.modelsLoaded) {
-                console.log('⏳ Waiting for MediaPipe models to load...');
+                console.log('⏳ Waiting for MediaPipe models...');
                 let attempts = 0;
-                while (!this.modelsLoaded && attempts < 50) {
+                while (!this.modelsLoaded && attempts < 30) {
                     await new Promise(resolve => setTimeout(resolve, 100));
                     attempts++;
                 }
 
                 if (!this.modelsLoaded) {
-                    console.warn('⚠️ MediaPipe models not loaded, starting without them');
+                    console.warn('⚠️ MediaPipe models not loaded, continuing without detection');
+                } else {
+                    console.log('✅ MediaPipe models loaded');
                 }
             }
 
-            // Bắt đầu detection loop
+            // BẮT ĐẦU DETECTION LOOP
             this.startDetectionLoop();
             this.updateButtonStates();
+
+            // DEBUG STATE
+            setTimeout(() => {
+                this.debugVideoState();
+            }, 1000);
 
             console.log('✅ Camera started successfully with MediaPipe');
 
@@ -354,7 +409,6 @@ class FaceDetector {
             console.error('❌ Error accessing camera:', error);
             alert('Không thể truy cập camera. Vui lòng kiểm tra quyền truy cập.\nError: ' + error.message);
 
-            // Reset state
             this.isCameraOn = false;
             this.updateButtonStates();
         }
@@ -416,26 +470,32 @@ class FaceDetector {
 
     initializeCanvas() {
         if (!this.video || this.video.videoWidth === 0) {
-            console.warn('⚠️ Video not ready for canvas initialization');
+            console.warn('⚠️ Video not ready for canvas initialization, retrying...');
             setTimeout(() => this.initializeCanvas(), 100);
             return;
         }
 
         try {
+            console.log('🎨 Starting canvas initialization...');
+
+            // Đặt kích thước canvas CHÍNH XÁC bằng video
             this.canvas.width = this.video.videoWidth;
             this.canvas.height = this.video.videoHeight;
 
-            console.log('🎨 Canvas initialized:', this.canvas.width, 'x', this.canvas.height);
+            console.log('📐 Canvas dimensions set:', this.canvas.width, 'x', this.canvas.height);
+
+            // RESET transform trước
+            this.ctx.setTransform(1, 0, 0, 1, 0, 0);
 
             // Mirror effect cho front camera
-            this.ctx.setTransform(1, 0, 0, 1, 0, 0); // Reset transform
             this.ctx.translate(this.canvas.width, 0);
             this.ctx.scale(-1, 1);
 
             this.canvasInitialized = true;
 
-            // Vẽ frame đầu tiên
+            // Vẽ frame đầu tiên NGAY LẬP TỨC
             this.drawVideoFrame();
+            console.log('✅ Canvas initialized and first frame drawn');
 
         } catch (error) {
             console.error('❌ Canvas initialization error:', error);
@@ -449,8 +509,9 @@ class FaceDetector {
         }
 
         try {
-            // Clear canvas trước
-            this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
+            // Clear canvas với màu đen trước
+            this.ctx.fillStyle = '#000000';
+            this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
 
             // Vẽ video frame
             this.ctx.drawImage(
@@ -460,9 +521,24 @@ class FaceDetector {
                 this.canvas.height
             );
 
+            console.log('📹 Video frame drawn successfully');
+
         } catch (error) {
             console.error('❌ Error drawing video frame:', error);
         }
+    }
+
+    // THÊM PHƯƠNG THỨC DEBUG
+    debugVideoState() {
+        console.log('🔍 VIDEO DEBUG:');
+        console.log('- video.readyState:', this.video.readyState);
+        console.log('- video.videoWidth:', this.video.videoWidth);
+        console.log('- video.videoHeight:', this.video.videoHeight);
+        console.log('- video.paused:', this.video.paused);
+        console.log('- canvas.width:', this.canvas.width);
+        console.log('- canvas.height:', this.canvas.height);
+        console.log('- canvasInitialized:', this.canvasInitialized);
+        console.log('- isDetectionRunning:', this.isDetectionRunning);
     }
 
     // 🎯 GIỮ NGUYÊN tracking methods
