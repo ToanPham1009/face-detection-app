@@ -35,6 +35,19 @@ class FaceDetectionApp {
         // Khởi tạo FaceDetector với tracking cải tiến
         this.faceDetector = new FaceDetector();
 
+        // Thêm callbacks
+        this.faceDetector.setCallbacks({
+            onFaceCountUpdate: (count) => {
+                this.updateFaceCount(count);
+            },
+            onTotalFacesUpdate: (total) => {
+                this.updateTotalFaces(total);
+            },
+            onTrackingTimeUpdate: (seconds) => {
+                this.updateTrackingTime(seconds);
+            }
+        });
+
         // Setup event listeners
         this.setupEventListeners();
 
@@ -48,6 +61,30 @@ class FaceDetectionApp {
         this.setupDeleteModal();
 
         console.log('✅ FaceDetectionApp initialized successfully');
+    }
+
+    // Thêm vào class FaceDetectionApp trong app.js
+    updateFaceCount(count) {
+        const faceCountElement = document.getElementById('faceCount');
+        if (faceCountElement) {
+            faceCountElement.textContent = count;
+        }
+    }
+
+    updateTotalFaces(total) {
+        const totalFacesElement = document.getElementById('totalFaces');
+        if (totalFacesElement) {
+            totalFacesElement.textContent = total;
+        }
+    }
+
+    updateTrackingTime(seconds) {
+        const trackingTimeElement = document.getElementById('trackingTime');
+        if (trackingTimeElement) {
+            const minutes = Math.floor(seconds / 60);
+            const remainingSeconds = seconds % 60;
+            trackingTimeElement.textContent = `${minutes}:${remainingSeconds.toString().padStart(2, '0')}`;
+        }
     }
 
     setupDeleteModal() {
@@ -168,7 +205,7 @@ class FaceDetectionApp {
             'stopCamera': () => this.faceDetector.stopCamera(),
             'startTracking': () => this.startTracking(),
             'stopTracking': () => this.stopTracking(),
-            
+
             'debugButton': () => this.faceDetector.debugVideoState() // THÊM DÒNG NÀY
         };
 

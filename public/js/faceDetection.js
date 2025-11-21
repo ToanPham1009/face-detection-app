@@ -935,4 +935,45 @@ class ImprovedFaceTracker {
         // 🎯 Đếm tất cả faces đang được detect, không chỉ tracking
         return Array.from(this.faces.values()).filter(face => face.isTracked).length;
     }
+
+    updateTrackingStats(trackedFaces) {
+        if (!this.isTracking) return;
+
+        try {
+            // Cập nhật tổng số khuôn mặt
+            const currentFaceCount = trackedFaces.length;
+            
+            // Thêm vào unique faces set
+            trackedFaces.forEach(face => {
+                this.uniqueFaces.add(face.id);
+            });
+
+            // Cập nhật tổng số khuôn mặt đếm được
+            this.totalFacesCount = Math.max(this.totalFacesCount, this.uniqueFaces.size);
+
+            // Gọi callback để cập nhật UI
+            if (this.onFaceCountUpdate) {
+                this.onFaceCountUpdate(currentFaceCount);
+            }
+
+            if (this.onTotalFacesUpdate) {
+                this.onTotalFacesUpdate(this.totalFacesCount);
+            }
+
+            // Log để debug
+            if (currentFaceCount > 0) {
+                console.log(`📊 Tracking stats - Current: ${currentFaceCount}, Total: ${this.totalFacesCount}`);
+            }
+
+        } catch (error) {
+            console.error('❌ Error updating tracking stats:', error);
+        }
+    }
+
+    // Thêm các callback methods để kết nối với UI
+    setCallbacks(callbacks) {
+        this.onFaceCountUpdate = callbacks.onFaceCountUpdate;
+        this.onTotalFacesUpdate = callbacks.onTotalFacesUpdate;
+        this.onTrackingTimeUpdate = callbacks.onTrackingTimeUpdate;
+    }
 }
