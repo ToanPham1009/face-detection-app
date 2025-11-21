@@ -28,6 +28,11 @@ class FaceDetector {
         this.video.muted = true;
         this.video.style.display = 'none';
 
+        // THÊM: Khởi tạo callbacks
+        this.onFaceCountUpdate = null;
+        this.onTotalFacesUpdate = null;
+        this.onTrackingTimeUpdate = null;
+
         // THÊM BIẾN NÀY
         this.minDetectionInterval = 1000 / 15; // 15 FPS
         this.canvasInitialized = false;
@@ -677,6 +682,13 @@ class FaceDetector {
         this.updateButtonStates();
         console.log('✅ Camera stopped completely');
     }
+    // Thêm các callback methods để kết nối với UI
+    setCallbacks(callbacks) {
+        this.onFaceCountUpdate = callbacks.onFaceCountUpdate;
+        this.onTotalFacesUpdate = callbacks.onTotalFacesUpdate;
+        this.onTrackingTimeUpdate = callbacks.onTrackingTimeUpdate;
+        console.log('✅ Callbacks set successfully');
+    }
 }
 
 // 🎯 CLASS TRACKER CẢI TIẾN với smoothing mạnh
@@ -942,7 +954,7 @@ class ImprovedFaceTracker {
         try {
             // Cập nhật tổng số khuôn mặt
             const currentFaceCount = trackedFaces.length;
-            
+
             // Thêm vào unique faces set
             trackedFaces.forEach(face => {
                 this.uniqueFaces.add(face.id);
@@ -970,10 +982,5 @@ class ImprovedFaceTracker {
         }
     }
 
-    // Thêm các callback methods để kết nối với UI
-    setCallbacks(callbacks) {
-        this.onFaceCountUpdate = callbacks.onFaceCountUpdate;
-        this.onTotalFacesUpdate = callbacks.onTotalFacesUpdate;
-        this.onTrackingTimeUpdate = callbacks.onTrackingTimeUpdate;
-    }
+
 }
