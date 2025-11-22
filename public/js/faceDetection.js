@@ -142,11 +142,16 @@ class FaceDetector {
                 return null;
             }
 
+            // DEBUG: Kiểm tra cấu trúc boundingBox
+            console.log(`🔍 BoundingBox ${index}:`, bbox);
+
             // Chuyển đổi normalized coordinates sang pixel coordinates
             const widthPx = bbox.width * this.canvas.width;
             const heightPx = bbox.height * this.canvas.height;
             const centerXPx = (bbox.originX + bbox.width / 2) * this.canvas.width;
             const centerYPx = (bbox.originY + bbox.height / 2) * this.canvas.height;
+
+            // SỬA QUAN TRỌNG: Tính toán start coordinates từ originX và originY
             const startXPx = bbox.originX * this.canvas.width;
             const startYPx = bbox.originY * this.canvas.height;
 
@@ -159,10 +164,11 @@ class FaceDetector {
                 width: widthPx,
                 height: heightPx,
                 landmarks: det.landmarks || [],
+                // SỬA: TẠO boundingBox mới với start coordinates được tính toán
                 boundingBox: {
-                    start: [startXPx, startYPx], // SỬA: Đảm bảo có start coordinates
+                    start: [startXPx, startYPx], // SỬ DỤNG TỌA ĐỘ ĐÃ TÍNH
                     end: [startXPx + widthPx, startYPx + heightPx],
-                    originX: startXPx, // THÊM: để backup
+                    originX: startXPx,
                     originY: startYPx,
                     width: widthPx,
                     height: heightPx
@@ -171,7 +177,7 @@ class FaceDetector {
                 rawConfidence: det.confidence
             };
 
-            console.log(`📝 Formatted face ${index}: confidence=${faceData.confidence}, size=${faceData.width.toFixed(0)}x${faceData.height.toFixed(0)}px`);
+            console.log(`📝 Formatted face ${index}: confidence=${faceData.confidence}, start=[${startXPx.toFixed(0)},${startYPx.toFixed(0)}], size=${faceData.width.toFixed(0)}x${faceData.height.toFixed(0)}px`);
             return faceData;
         }).filter(face => face !== null);
     }
@@ -191,15 +197,26 @@ class FaceDetector {
                 return;
             }
 
-            // SỬA: Sử dụng backup coordinates nếu start không tồn tại
-            const start = bbox.start || [bbox.originX, bbox.originY];
+            // SỬA: SỬ DỤNG TỌA ĐỘ TRỰC TIẾP TỪ FACE DATA NẾU boundingBox.start KHÔNG TỒN TẠI
+            let startX, startY;
+
+            if (bbox.start && bbox.start[0] !== undefined && bbox.start[1] !== undefined) {
+                startX = bbox.start[0];
+                startY = bbox.start[1];
+            } else if (bbox.originX !== undefined && bbox.originY !== undefined) {
+                // SỬ DỤNG originX, originY nếu start không tồn tại
+                startX = bbox.originX;
+                startY = bbox.originY;
+            } else {
+                // TÍNH TOÁN TỪ CENTER NẾU KHÔNG CÓ TỌA ĐỘ START
+                startX = detection.x - detection.width / 2;
+                startY = detection.y - detection.height / 2;
+            }
+
+            const start = [startX, startY];
             const size = [detection.width, detection.height];
 
-            // Đảm bảo start coordinates tồn tại
-            if (!start || start[0] === undefined || start[1] === undefined) {
-                console.warn(`⚠️ Detection ${index} has invalid start coordinates:`, start);
-                return;
-            }
+            console.log(`🎨 Drawing detection ${index} at [${startX.toFixed(0)}, ${startY.toFixed(0)}] size ${detection.width.toFixed(0)}x${detection.height.toFixed(0)}`);
 
             // Tìm face được track
             let bestFaceId = null;
@@ -230,6 +247,13 @@ class FaceDetector {
 
     // SỬA: Thêm điều kiện kiểm tra landmarks
     drawStableBoundingBox(start, size, trackedFace, confidence, hasGoodLandmarks) {
+        // KIỂM TRA TÍNH HỢP LỆ CỦA START COORDINATES
+        if (!start || start[0] === undefined || start[1] === undefined ||
+            isNaN(start[0]) || isNaN(start[1])) {
+            console.warn('⚠️ Invalid start coordinates in drawStableBoundingBox:', start);
+            return;
+        }
+
         this.ctx.save();
 
         // Xác định màu sắc
@@ -254,7 +278,7 @@ class FaceDetector {
         this.ctx.shadowBlur = 6;
         this.ctx.shadowColor = boxColor;
 
-        // Vẽ bounding box với pixel coordinates
+        // Vẽ bounding box
         this.ctx.strokeRect(start[0], start[1], size[0], size[1]);
 
         // Vẽ thông tin
@@ -268,6 +292,8 @@ class FaceDetector {
         this.ctx.fillText(infoText, start[0], start[1] - 8);
 
         this.ctx.restore();
+
+        console.log(`✅ Drew bounding box at [${start[0].toFixed(0)}, ${start[1].toFixed(0)}]`);
     }
 
     drawMediaPipeLandmarks(landmarks) {
