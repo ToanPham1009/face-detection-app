@@ -54,10 +54,10 @@ class FaceDetector {
                 }
             });
 
-            // SỬA: TĂNG confidence threshold để giảm false positive
+            // SỬA: Điều chỉnh confidence threshold cân bằng
             this.faceDetection.setOptions({
                 model: 'short',
-                minDetectionConfidence: 0.7  // TĂNG từ 0.3 lên 0.7
+                minDetectionConfidence: 0.5  // CÂN BẰNG: từ 0.7 xuống 0.5
             });
 
             this.faceDetection.onResults((results) => {
@@ -88,13 +88,13 @@ class FaceDetector {
             // 2. Xử lý detections
             const detections = results.detections || [];
 
-            console.log(`🎯 MediaPipe results: ${detections.length} detections`);
+            console.log(`🎯 MediaPipe results: ${detections.length} raw detections`);
 
-            // THÊM: Lọc detections theo confidence
+            // SỬA: Giảm ngưỡng confidence filter
             const filteredDetections = detections.filter(det => {
                 const confidence = det.confidence || 0;
                 console.log(`📊 Detection confidence: ${confidence}`);
-                return confidence >= 0.7; // Chỉ lấy detection có confidence cao
+                return confidence >= 0.5; // GIẢM từ 0.7 xuống 0.5
             });
 
             console.log(`✅ Filtered detections: ${filteredDetections.length}/${detections.length}`);
@@ -148,7 +148,7 @@ class FaceDetector {
                 confidence: det.confidence || 0
             };
 
-            console.log(`📝 Formatted face ${index}: confidence=${faceData.confidence}, size=${bbox.width}x${bbox.height}`);
+            console.log(`📝 Formatted face ${index}: confidence=${faceData.confidence?.toFixed(3)}, size=${bbox.width.toFixed(0)}x${bbox.height.toFixed(0)}`);
             return faceData;
         });
     }
@@ -186,13 +186,9 @@ class FaceDetector {
 
             const trackedFace = bestFaceId ? trackedFaceMap.get(bestFaceId) : null;
 
-            // THÊM: Kiểm tra confidence trước khi vẽ
+            // SỬA: Vẽ tất cả detections đã qua filter, không skip thêm
             const confidence = detection.confidence || 0;
-            if (confidence < 0.7) {
-                console.log(`🚫 Skipping low confidence detection: ${confidence}`);
-                return; // Bỏ qua detection có confidence thấp
-            }
-
+            
             // Vẽ bounding box
             this.drawStableBoundingBox(start, size, trackedFace, confidence);
 
@@ -201,7 +197,7 @@ class FaceDetector {
         });
     }
 
-    // SỬA: Thêm tham số confidence để hiển thị
+    // SỬA: Điều chỉnh màu sắc theo confidence
     drawStableBoundingBox(start, size, trackedFace, confidence) {
         this.ctx.save();
 
@@ -211,33 +207,33 @@ class FaceDetector {
         if (this.isTracking && trackedFace && trackedFace.isTracked) {
             boxColor = '#00ff00'; // Xanh lá - đang tracked
             textColor = '#00ff00';
-        } else if (confidence >= 0.8) {
-            boxColor = '#ffff00'; // Vàng - confidence cao
-            textColor = '#ffff00';
         } else if (confidence >= 0.7) {
-            boxColor = '#ffa500'; // Cam - confidence trung bình
-            textColor = '#ffa500';
+            boxColor = '#00ff00'; // Xanh lá - confidence cao
+            textColor = '#00ff00';
+        } else if (confidence >= 0.5) {
+            boxColor = '#ffff00'; // Vàng - confidence trung bình
+            textColor = '#ffff00';
         } else {
-            boxColor = '#ff4444'; // Đỏ - confidence thấp
-            textColor = '#ff4444';
+            boxColor = '#ffa500'; // Cam - confidence thấp
+            textColor = '#ffa500';
         }
 
         this.ctx.strokeStyle = boxColor;
         this.ctx.lineWidth = trackedFace ? 3 : 2;
 
-        this.ctx.shadowBlur = 8;
+        this.ctx.shadowBlur = 6;
         this.ctx.shadowColor = boxColor;
 
+        // Vẽ bounding box
         this.ctx.strokeRect(start[0], start[1], size[0], size[1]);
 
         // Vẽ thông tin
+        this.ctx.fillStyle = textColor;
+        this.ctx.font = 'bold 12px Arial';
+        
         if (trackedFace) {
-            this.ctx.fillStyle = textColor;
-            this.ctx.font = 'bold 14px Arial';
             this.ctx.fillText(`Face ${trackedFace.id} (${(confidence * 100).toFixed(0)}%)`, start[0], start[1] - 8);
         } else {
-            this.ctx.fillStyle = textColor;
-            this.ctx.font = 'bold 12px Arial';
             this.ctx.fillText(`${(confidence * 100).toFixed(0)}%`, start[0], start[1] - 5);
         }
 
@@ -287,7 +283,7 @@ class FaceDetector {
         this.ctx.restore();
     }
 
-    // Các phương thức khác giữ nguyên...
+    // GIỮ NGUYÊN các phương thức khác...
     startDetectionLoop() {
         if (this.isDetectionRunning) {
             console.log('⚠️ Detection loop already running');
@@ -356,6 +352,7 @@ class FaceDetector {
         }
     }
 
+    // GIỮ NGUYÊN startCamera và các phương thức khác...
     async startCamera() {
         try {
             console.log('🎯 Starting camera...');
@@ -525,7 +522,7 @@ class FaceDetector {
         }
     }
 
-    // Các phương thức tracking và button states giữ nguyên...
+    // GIỮ NGUYÊN các phương thức tracking và button states...
     startTracking() {
         if (!this.modelsLoaded) {
             alert('Mô hình MediaPipe chưa sẵn sàng. Vui lòng đợi...');
@@ -684,13 +681,13 @@ class FaceDetector {
     }
 }
 
-// CLASS TRACKER CẢI TIẾN - TĂNG ĐỘ CHÍNH XÁC
+// CLASS TRACKER CẢI TIẾN - ĐIỀU CHỈNH ĐỘ NHẠY
 class ImprovedFaceTracker {
     constructor() {
         this.faces = new Map();
         this.nextId = 1;
-        this.maxFramesLost = 30; // Giảm thời gian mất tích
-        this.trackingThreshold = 0.4; // TĂNG ngưỡng tracking
+        this.maxFramesLost = 30;
+        this.trackingThreshold = 0.3; // ĐIỀU CHỈNH: từ 0.4 xuống 0.3
         this.smoothingFactor = 0.3;
         this.positionHistory = new Map();
     }
@@ -712,10 +709,10 @@ class ImprovedFaceTracker {
 
         const results = [];
 
-        // MATCHING với điều kiện CHẶT CHẼ hơn
+        // MATCHING với điều kiện CÂN BẰNG
         for (const currentFace of currentFaces) {
-            // THÊM: Bỏ qua face có confidence thấp
-            if (currentFace.confidence < 0.7) {
+            // SỬA: Giảm ngưỡng confidence filter trong tracker
+            if (currentFace.confidence < 0.5) { // GIẢM từ 0.7 xuống 0.5
                 console.log(`🚫 Skipping low confidence face: ${currentFace.confidence}`);
                 continue;
             }
@@ -730,15 +727,15 @@ class ImprovedFaceTracker {
                 const centerDistance = this.calculateDistance(currentFace, knownFace);
                 const sizeSimilarity = this.calculateSizeSimilarity(currentFace, knownFace);
 
-                // SCORE TỔNG HỢP - TĂNG TRỌNG SỐ cho IoU và distance
-                const totalScore = (iouScore * 0.6) + // TĂNG trọng số IoU
-                    (Math.max(0, 1 - centerDistance / 80) * 0.3) + // GIẢM khoảng cách cho phép
-                    (sizeSimilarity * 0.1); // GIẢM trọng số kích thước
+                // SCORE TỔNG HỢP - CÂN BẰNG trọng số
+                const totalScore = (iouScore * 0.5) + // ĐIỀU CHỈNH: từ 0.6 xuống 0.5
+                    (Math.max(0, 1 - centerDistance / 120) * 0.4) + // TĂNG khoảng cách lên 120px
+                    (sizeSimilarity * 0.1);
 
                 console.log(`🎯 Matching score: ${totalScore.toFixed(3)} (IoU: ${iouScore.toFixed(3)}, dist: ${centerDistance.toFixed(1)})`);
 
-                // SỬA: TĂNG ngưỡng matching lên 0.4
-                if (totalScore > 0.4 && totalScore > bestScore) {
+                // SỬA: Giảm ngưỡng matching xuống 0.3
+                if (totalScore > 0.3 && totalScore > bestScore) {
                     bestScore = totalScore;
                     bestMatch = knownFace;
                 }
@@ -760,7 +757,7 @@ class ImprovedFaceTracker {
                     ...this.getSmoothedPosition(bestMatch)
                 });
             } else {
-                // Face mới - KIỂM TRA NGHIÊM NGẶT HƠN
+                // Face mới - ĐIỀU KIỆN DỄ DÀNG HƠN
                 if (this.isValidFace(currentFace)) {
                     console.log(`🆕 Creating new face from detection (conf: ${currentFace.confidence})`);
                     const newFace = this.createNewFace(currentFace);
@@ -792,6 +789,7 @@ class ImprovedFaceTracker {
         return results;
     }
 
+    // GIỮ NGUYÊN các phương thức smoothing...
     updateFaceWithSmoothing(knownFace, currentFace) {
         const history = this.positionHistory.get(knownFace.id) || [];
         history.push({
@@ -889,17 +887,17 @@ class ImprovedFaceTracker {
         return start * (1 - factor) + end * factor;
     }
 
-    // SỬA: TĂNG ĐỘ CHẶT CHẼ CỦA VALID FACE
+    // SỬA: ĐIỀU KIỆN DỄ DÀNG HƠN CHO VALID FACE
     isValidFace(face) {
         // 1. Kiểm tra confidence (QUAN TRỌNG)
-        if (face.confidence < 0.7) {
+        if (face.confidence < 0.5) { // GIẢM từ 0.7 xuống 0.5
             console.log(`❌ Low confidence: ${face.confidence}`);
             return false;
         }
 
         // 2. Kiểm tra kích thước hợp lý cho khuôn mặt
-        const minFaceSize = 20; // TĂNG kích thước tối thiểu
-        const maxFaceSize = 400; // Thêm kích thước tối đa
+        const minFaceSize = 15; // GIẢM từ 20 xuống 15
+        const maxFaceSize = 500; // TĂNG kích thước tối đa
         
         if (face.width < minFaceSize || face.height < minFaceSize) {
             console.log(`❌ Face too small: ${face.width}x${face.height}`);
@@ -913,22 +911,14 @@ class ImprovedFaceTracker {
 
         // 3. Kiểm tra tỷ lệ aspect ratio của khuôn mặt
         const aspectRatio = face.width / face.height;
-        const validAspectRatio = aspectRatio >= 0.5 && aspectRatio <= 2.0; // Tỷ lệ khuôn mặt thực tế
+        const validAspectRatio = aspectRatio >= 0.3 && aspectRatio <= 3.0; // MỞ RỘNG tỷ lệ
         
         if (!validAspectRatio) {
             console.log(`❌ Invalid face aspect ratio: ${aspectRatio.toFixed(2)}`);
             return false;
         }
 
-        // 4. Kiểm tra vị trí (không quá gần biên)
-        const margin = 30;
-        if (face.x < margin || face.x > (640 - margin) || 
-            face.y < margin || face.y > (480 - margin)) {
-            console.log(`❌ Face too close to edge: (${face.x}, ${face.y})`);
-            return false;
-        }
-
-        console.log(`✅ Valid face: ${face.width}x${face.height}, ratio: ${aspectRatio.toFixed(2)}, conf: ${face.confidence}`);
+        console.log(`✅ Valid face: ${face.width.toFixed(0)}x${face.height.toFixed(0)}, ratio: ${aspectRatio.toFixed(2)}, conf: ${face.confidence.toFixed(3)}`);
         return true;
     }
 
