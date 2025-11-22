@@ -133,7 +133,7 @@ class FaceDetector {
     }
 
     formatDetections(detections) {
-        console.log(`📊 Formatting ${detections.length} high-quality detections`);
+        console.log(`📊 Formatting ${detections.length} detections`);
 
         return detections.map((det, index) => {
             const bbox = det.boundingBox;
@@ -142,23 +142,30 @@ class FaceDetector {
                 return null;
             }
 
-            const start = [bbox.originX, bbox.originY];
-            const end = [bbox.originX + bbox.width, bbox.originY + bbox.height];
-            const centerX = bbox.originX + bbox.width / 2;
-            const centerY = bbox.originY + bbox.height / 2;
+            // SỬA: Chuyển đổi normalized coordinates sang pixel coordinates
+            const widthPx = bbox.width * this.canvas.width;
+            const heightPx = bbox.height * this.canvas.height;
+            const centerXPx = (bbox.originX + bbox.width / 2) * this.canvas.width;
+            const centerYPx = (bbox.originY + bbox.height / 2) * this.canvas.height;
+
+            // SỬA: Xử lý confidence undefined
+            const confidence = det.confidence || 0.8; // Nếu undefined thì đặt mặc định là 0.8
 
             const faceData = {
-                x: centerX,
-                y: centerY,
-                width: bbox.width,
-                height: bbox.height,
+                x: centerXPx, // SỬA: dùng pixel coordinates
+                y: centerYPx,
+                width: widthPx,
+                height: heightPx,
                 landmarks: det.landmarks || [],
-                boundingBox: { start, end },
-                confidence: det.confidence || 0,
-                hasGoodLandmarks: det.landmarks && det.landmarks.length >= 6
+                boundingBox: {
+                    start: [bbox.originX * this.canvas.width, bbox.originY * this.canvas.height],
+                    end: [(bbox.originX + bbox.width) * this.canvas.width, (bbox.originY + bbox.height) * this.canvas.height]
+                },
+                confidence: confidence,
+                rawConfidence: det.confidence // Giữ giá trị gốc để debug
             };
 
-            console.log(`📝 High-quality face ${index}: confidence=${faceData.confidence?.toFixed(3)}, size=${bbox.width.toFixed(0)}x${bbox.height.toFixed(0)}, landmarks=${faceData.landmarks.length}`);
+            console.log(`📝 Formatted face ${index}: confidence=${faceData.confidence}, size=${faceData.width.toFixed(0)}x${faceData.height.toFixed(0)}px, landmarks=${faceData.landmarks.length}`);
             return faceData;
         }).filter(face => face !== null);
     }
@@ -169,14 +176,15 @@ class FaceDetector {
             trackedFaceMap.set(face.id, face);
         });
 
-        console.log(`🎯 Drawing ${detections.length} high-quality detections`);
+        console.log(`🎯 Drawing ${detections.length} detections`);
 
         detections.forEach((detection, index) => {
             const bbox = detection.boundingBox;
             if (!bbox) return;
 
-            const start = [bbox.originX, bbox.originY];
-            const size = [bbox.width, bbox.height];
+            // SỬA: Sử dụng pixel coordinates đã được convert
+            const start = bbox.start; // Đã là pixel coordinates
+            const size = [detection.width, detection.height]; // Đã là pixel coordinates
 
             // Tìm face được track
             let bestFaceId = null;
@@ -184,11 +192,11 @@ class FaceDetector {
 
             for (const [faceId, trackedFace] of trackedFaceMap) {
                 const distance = Math.sqrt(
-                    Math.pow(bbox.originX + bbox.width / 2 - trackedFace.x, 2) +
-                    Math.pow(bbox.originY + bbox.height / 2 - trackedFace.y, 2)
+                    Math.pow(detection.x - trackedFace.x, 2) +
+                    Math.pow(detection.y - trackedFace.y, 2)
                 );
 
-                if (distance < 80 && distance < minDistance) {
+                if (distance < 50 && distance < minDistance) { // Giảm khoảng cách vì đang dùng pixel
                     minDistance = distance;
                     bestFaceId = faceId;
                 }
@@ -196,12 +204,9 @@ class FaceDetector {
 
             const trackedFace = bestFaceId ? trackedFaceMap.get(bestFaceId) : null;
 
-            // Vẽ bounding box - CHỈ VẼ DETECTIONS CHẤT LƯỢNG CAO
+            // Vẽ bounding box
             const confidence = detection.confidence || 0;
-            this.drawStableBoundingBox(start, size, trackedFace, confidence, detection.hasGoodLandmarks);
-
-            // Vẽ landmarks MediaPipe
-            this.drawMediaPipeLandmarks(detection.landmarks);
+            this.drawStableBoundingBox(start, size, trackedFace, confidence, detection.landmarks?.length >= 6);
         });
     }
 
@@ -209,41 +214,40 @@ class FaceDetector {
     drawStableBoundingBox(start, size, trackedFace, confidence, hasGoodLandmarks) {
         this.ctx.save();
 
-        // Xác định màu sắc dựa trên chất lượng detection
+        // Xác định màu sắc
         let boxColor, textColor;
 
         if (this.isTracking && trackedFace && trackedFace.isTracked) {
-            boxColor = '#00ff00'; // Xanh lá - đang tracked
+            boxColor = '#00ff00';
             textColor = '#00ff00';
-        } else if (confidence >= 0.8 && hasGoodLandmarks) {
-            boxColor = '#00ff00'; // Xanh lá - chất lượng rất cao
+        } else if (confidence >= 0.7) {
+            boxColor = '#00ff00';
             textColor = '#00ff00';
-        } else if (confidence >= 0.7 && hasGoodLandmarks) {
-            boxColor = '#ffff00'; // Vàng - chất lượng cao
+        } else if (confidence >= 0.5) {
+            boxColor = '#ffff00';
             textColor = '#ffff00';
         } else {
-            boxColor = '#ff4444'; // Đỏ - chất lượng thấp (không nên xảy ra)
+            boxColor = '#ff4444';
             textColor = '#ff4444';
         }
 
         this.ctx.strokeStyle = boxColor;
         this.ctx.lineWidth = trackedFace ? 3 : 2;
-
         this.ctx.shadowBlur = 6;
         this.ctx.shadowColor = boxColor;
 
-        // Vẽ bounding box
+        // Vẽ bounding box với pixel coordinates
         this.ctx.strokeRect(start[0], start[1], size[0], size[1]);
 
-        // Vẽ thông tin chất lượng
+        // Vẽ thông tin
         this.ctx.fillStyle = textColor;
         this.ctx.font = 'bold 12px Arial';
 
-        const qualityText = trackedFace ?
+        const infoText = trackedFace ?
             `Face ${trackedFace.id}` :
             `Face (${(confidence * 100).toFixed(0)}%)`;
 
-        this.ctx.fillText(qualityText, start[0], start[1] - 8);
+        this.ctx.fillText(infoText, start[0], start[1] - 8);
 
         this.ctx.restore();
     }
@@ -780,7 +784,7 @@ class ImprovedFaceTracker {
         console.log(`📊 Tracker results: ${results.length} faces`);
         return results;
     }
-    
+
     // GIỮ NGUYÊN các phương thức helper...
     updateFaceWithSmoothing(knownFace, currentFace) {
         const history = this.positionHistory.get(knownFace.id) || [];
@@ -881,8 +885,45 @@ class ImprovedFaceTracker {
 
     // SỬA: KIỂM TRA NGHIÊM NGẶT HƠN
     isValidFace(face) {
-        // TẠM THỜI: LUÔN TRẢ VỀ TRUE ĐỂ DEBUG
-        console.log(`🔍 Validating face: conf=${face.confidence}, size=${face.width}x${face.height}, landmarks=${face.landmarks?.length || 0}`);
+        // SỬA: Sử dụng pixel coordinates để kiểm tra
+        console.log(`🔍 Validating face: conf=${face.confidence}, size=${face.width.toFixed(0)}x${face.height.toFixed(0)}px, landmarks=${face.landmarks?.length || 0}`);
+
+        // 1. Confidence - xử lý undefined
+        if (face.confidence < 0.3) { // Giảm ngưỡng vì confidence có thể thấp
+            console.log(`❌ Low confidence: ${face.confidence}`);
+            return false;
+        }
+
+        // 2. Landmarks - vẫn yêu cầu
+        if (!face.landmarks || face.landmarks.length < 6) {
+            console.log(`❌ Insufficient landmarks: ${face.landmarks?.length || 0}`);
+            return false;
+        }
+
+        // 3. Kích thước - sử dụng pixel coordinates
+        const minFaceSize = 40; // pixel
+        const maxFaceSize = 400; // pixel
+
+        if (face.width < minFaceSize || face.height < minFaceSize) {
+            console.log(`❌ Face too small: ${face.width.toFixed(0)}x${face.height.toFixed(0)}px`);
+            return false;
+        }
+
+        if (face.width > maxFaceSize || face.height > maxFaceSize) {
+            console.log(`❌ Face too large: ${face.width.toFixed(0)}x${face.height.toFixed(0)}px`);
+            return false;
+        }
+
+        // 4. Tỷ lệ
+        const aspectRatio = face.width / face.height;
+        const validAspectRatio = aspectRatio >= 0.5 && aspectRatio <= 2.0;
+
+        if (!validAspectRatio) {
+            console.log(`❌ Invalid face aspect ratio: ${aspectRatio.toFixed(2)}`);
+            return false;
+        }
+
+        console.log(`✅ Valid face: ${face.width.toFixed(0)}x${face.height.toFixed(0)}px, ratio: ${aspectRatio.toFixed(2)}`);
         return true;
     }
 
