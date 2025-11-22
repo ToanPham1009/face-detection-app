@@ -135,34 +135,41 @@ class FaceDetector {
                 return null;
             }
 
-            // DEBUG: Kiểm tra cấu trúc boundingBox
             console.log(`🔍 BoundingBox ${index} structure:`, Object.keys(bbox));
 
-            // SỬA QUAN TRỌNG: Xử lý cả 2 loại boundingBox structure
-            let widthPx, heightPx, centerXPx, centerYPx, startXPx, startYPx;
+            let widthPx, heightPx, startXPx, startYPx;
 
+            // Xử lý cả 2 loại boundingBox structure
             if (bbox.xCenter !== undefined && bbox.yCenter !== undefined) {
                 // Structure 1: xCenter, yCenter, width, height
                 widthPx = bbox.width * this.canvas.width;
                 heightPx = bbox.height * this.canvas.height;
-                centerXPx = bbox.xCenter * this.canvas.width;
-                centerYPx = bbox.yCenter * this.canvas.height;
-                startXPx = (bbox.xCenter - bbox.width / 2) * this.canvas.width;
-                startYPx = (bbox.yCenter - bbox.height / 2) * this.canvas.height;
+
+                // QUAN TRỌNG: Tính toán tọa độ gốc trước khi flip
+                const originalStartX = (bbox.xCenter - bbox.width / 2) * this.canvas.width;
+                const originalStartY = (bbox.yCenter - bbox.height / 2) * this.canvas.height;
+
+                // FLIP theo trục X để khớp với video
+                startXPx = this.canvas.width - originalStartX - widthPx;
+                startYPx = originalStartY;
+
             } else if (bbox.originX !== undefined && bbox.originY !== undefined) {
                 // Structure 2: originX, originY, width, height
                 widthPx = bbox.width * this.canvas.width;
                 heightPx = bbox.height * this.canvas.height;
-                startXPx = bbox.originX * this.canvas.width;
+
+                // FLIP theo trục X
+                startXPx = this.canvas.width - (bbox.originX * this.canvas.width) - widthPx;
                 startYPx = bbox.originY * this.canvas.height;
-                centerXPx = (bbox.originX + bbox.width / 2) * this.canvas.width;
-                centerYPx = (bbox.originY + bbox.height / 2) * this.canvas.height;
             } else {
                 console.warn(`❌ Unknown boundingBox structure:`, bbox);
                 return null;
             }
 
-            // Xử lý confidence undefined
+            // Tính center point đã flip
+            const centerXPx = startXPx + widthPx / 2;
+            const centerYPx = startYPx + heightPx / 2;
+
             const confidence = det.confidence || 0.8;
 
             const faceData = {
@@ -183,7 +190,7 @@ class FaceDetector {
                 rawConfidence: det.confidence
             };
 
-            // SỬA: THÊM KIỂM TRA TÍNH HỢP LỆ CỦA FACE DATA
+            // Kiểm tra tính hợp lệ
             if (isNaN(faceData.x) || isNaN(faceData.y) || isNaN(faceData.width) || isNaN(faceData.height)) {
                 console.warn(`❌ Invalid face data for detection ${index}:`, faceData);
                 return null;
@@ -253,7 +260,6 @@ class FaceDetector {
 
     // SỬA: Thêm điều kiện kiểm tra landmarks
     drawStableBoundingBox(start, size, trackedFace, confidence, hasGoodLandmarks) {
-        // KIỂM TRA TÍNH HỢP LỆ CỦA TẤT CẢ THAM SỐ
         if (!start || start[0] === undefined || start[1] === undefined ||
             isNaN(start[0]) || isNaN(start[1]) || isNaN(size[0]) || isNaN(size[1])) {
             console.warn('⚠️ Invalid parameters in drawStableBoundingBox:', { start, size });
@@ -262,20 +268,22 @@ class FaceDetector {
 
         this.ctx.save();
 
+        // QUAN TRỌNG: Reset transform trước khi vẽ bounding box
+        this.ctx.setTransform(1, 0, 0, 1, 0, 0);
+
         // Xác định màu sắc
         let boxColor, textColor;
-
         if (this.isTracking && trackedFace && trackedFace.isTracked) {
-            boxColor = '#00ff00'; // Xanh lá - đang tracked
+            boxColor = '#00ff00';
             textColor = '#00ff00';
         } else if (confidence >= 0.7) {
-            boxColor = '#00ff00'; // Xanh lá - confidence cao
+            boxColor = '#00ff00';
             textColor = '#00ff00';
         } else if (confidence >= 0.5) {
-            boxColor = '#ffff00'; // Vàng - confidence trung bình
+            boxColor = '#ffff00';
             textColor = '#ffff00';
         } else {
-            boxColor = '#ff4444'; // Đỏ - confidence thấp
+            boxColor = '#ff4444';
             textColor = '#ff4444';
         }
 
@@ -284,7 +292,7 @@ class FaceDetector {
         this.ctx.shadowBlur = 8;
         this.ctx.shadowColor = boxColor;
 
-        // Vẽ bounding box
+        // Vẽ bounding box với tọa độ đã được flip
         this.ctx.strokeRect(start[0], start[1], size[0], size[1]);
 
         // Vẽ thông tin
@@ -299,46 +307,62 @@ class FaceDetector {
 
         this.ctx.restore();
 
+        // QUAN TRỌNG: Khôi phục transform cho video
+        this.ctx.translate(this.canvas.width, 0);
+        this.ctx.scale(-1, 1);
+
         console.log(`✅ Drew bounding box at [${start[0].toFixed(0)}, ${start[1].toFixed(0)}]`);
     }
 
     drawMediaPipeLandmarks(landmarks) {
         if (!landmarks || landmarks.length < 6) {
-            return; // Chỉ vẽ khi có đủ landmarks
+            return;
         }
 
         this.ctx.save();
-        this.ctx.fillStyle = '#00ff00'; // Màu xanh lá cho landmarks chất lượng cao
+        this.ctx.fillStyle = '#00ff00';
         this.ctx.strokeStyle = '#00ff00';
         this.ctx.lineWidth = 1.5;
 
-        // Vẽ các điểm landmarks
+        // Vẽ các điểm landmarks với flip
         landmarks.forEach((landmark, index) => {
+            // FLIP landmark theo trục X
+            const flippedX = this.canvas.width - (landmark.x * this.canvas.width);
+            const y = landmark.y * this.canvas.height;
+
             this.ctx.beginPath();
-            this.ctx.arc(landmark.x * this.canvas.width, landmark.y * this.canvas.height, 3, 0, 2 * Math.PI);
+            this.ctx.arc(flippedX, y, 3, 0, 2 * Math.PI);
             this.ctx.fill();
         });
 
-        // Vẽ connections cho landmarks face
+        // Vẽ connections cho landmarks face với flip
         this.ctx.beginPath();
 
-        // Right eye (0, 1)
-        this.ctx.moveTo(landmarks[0].x * this.canvas.width, landmarks[0].y * this.canvas.height);
-        this.ctx.lineTo(landmarks[1].x * this.canvas.width, landmarks[1].y * this.canvas.height);
+        // Right eye (0, 1) - ĐÃ FLIP
+        const flippedX0 = this.canvas.width - (landmarks[0].x * this.canvas.width);
+        const flippedX1 = this.canvas.width - (landmarks[1].x * this.canvas.width);
 
-        // Left eye (2, 3)
-        this.ctx.moveTo(landmarks[2].x * this.canvas.width, landmarks[2].y * this.canvas.height);
-        this.ctx.lineTo(landmarks[3].x * this.canvas.width, landmarks[3].y * this.canvas.height);
+        this.ctx.moveTo(flippedX0, landmarks[0].y * this.canvas.height);
+        this.ctx.lineTo(flippedX1, landmarks[1].y * this.canvas.height);
 
-        // Nose tip (4) - vẽ chữ thập
-        this.ctx.moveTo(landmarks[4].x * this.canvas.width - 4, landmarks[4].y * this.canvas.height);
-        this.ctx.lineTo(landmarks[4].x * this.canvas.width + 4, landmarks[4].y * this.canvas.height);
-        this.ctx.moveTo(landmarks[4].x * this.canvas.width, landmarks[4].y * this.canvas.height - 4);
-        this.ctx.lineTo(landmarks[4].x * this.canvas.width, landmarks[4].y * this.canvas.height + 4);
+        // Left eye (2, 3) - ĐÃ FLIP
+        const flippedX2 = this.canvas.width - (landmarks[2].x * this.canvas.width);
+        const flippedX3 = this.canvas.width - (landmarks[3].x * this.canvas.width);
 
-        // Mouth (5) - vẽ đường ngang
-        this.ctx.moveTo(landmarks[5].x * this.canvas.width - 4, landmarks[5].y * this.canvas.height);
-        this.ctx.lineTo(landmarks[5].x * this.canvas.width + 4, landmarks[5].y * this.canvas.height);
+        this.ctx.moveTo(flippedX2, landmarks[2].y * this.canvas.height);
+        this.ctx.lineTo(flippedX3, landmarks[3].y * this.canvas.height);
+
+        // Nose tip (4) - vẽ chữ thập - ĐÃ FLIP
+        const flippedX4 = this.canvas.width - (landmarks[4].x * this.canvas.width);
+        this.ctx.moveTo(flippedX4 - 4, landmarks[4].y * this.canvas.height);
+        this.ctx.lineTo(flippedX4 + 4, landmarks[4].y * this.canvas.height);
+        this.ctx.moveTo(flippedX4, landmarks[4].y * this.canvas.height - 4);
+        this.ctx.lineTo(flippedX4, landmarks[4].y * this.canvas.height + 4);
+
+        // Mouth (5) - vẽ đường ngang - ĐÃ FLIP
+        const flippedX5 = this.canvas.width - (landmarks[5].x * this.canvas.width);
+        this.ctx.moveTo(flippedX5 - 4, landmarks[5].y * this.canvas.height);
+        this.ctx.lineTo(flippedX5 + 4, landmarks[5].y * this.canvas.height);
 
         this.ctx.stroke();
         this.ctx.restore();
@@ -550,6 +574,7 @@ class FaceDetector {
 
             console.log('📐 Canvas dimensions set:', this.canvas.width, 'x', this.canvas.height);
 
+            // CHỈ áp dụng transform cho video, bounding box sẽ tự flip
             this.ctx.setTransform(1, 0, 0, 1, 0, 0);
             this.ctx.translate(this.canvas.width, 0);
             this.ctx.scale(-1, 1);
