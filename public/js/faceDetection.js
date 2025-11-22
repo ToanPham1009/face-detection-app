@@ -190,6 +190,12 @@ class FaceDetector {
                 rawConfidence: det.confidence
             };
 
+            // SỬA: THÊM KIỂM TRA TÍNH HỢP LỆ CỦA FACE DATA
+            if (isNaN(faceData.x) || isNaN(faceData.y) || isNaN(faceData.width) || isNaN(faceData.height)) {
+                console.warn(`❌ Invalid face data for detection ${index}:`, faceData);
+                return null;
+            }
+
             console.log(`📝 Formatted face ${index}: confidence=${faceData.confidence}, start=[${startXPx.toFixed(0)},${startYPx.toFixed(0)}], size=${faceData.width.toFixed(0)}x${faceData.height.toFixed(0)}px`);
             return faceData;
         }).filter(face => face !== null);
@@ -204,14 +210,16 @@ class FaceDetector {
         console.log(`🎯 Drawing ${detections.length} detections`);
 
         detections.forEach((detection, index) => {
-            const bbox = detection.boundingBox;
-            if (!bbox) {
-                console.warn(`⚠️ Detection ${index} has no boundingBox`);
+            // SỬA: KIỂM TRA TÍNH HỢP LỆ CỦA DETECTION TRƯỚC
+            if (!detection || !detection.boundingBox) {
+                console.warn(`⚠️ Detection ${index} is invalid:`, detection);
                 return;
             }
 
-            // SỬA: SỬ DỤNG TỌA ĐỘ TRỰC TIẾP TỪ FACE DATA
-            let startX, startY;
+            const bbox = detection.boundingBox;
+
+            // SỬA: SỬ DỤNG TỌA ĐỘ TRỰC TIẾP TỪ FACE DATA - ĐẢM BẢO CÓ width và height
+            let startX, startY, width, height;
 
             if (bbox.start && !isNaN(bbox.start[0]) && !isNaN(bbox.start[1])) {
                 startX = bbox.start[0];
@@ -225,16 +233,21 @@ class FaceDetector {
                 startY = detection.y - detection.height / 2;
             }
 
-            // KIỂM TRA TÍNH HỢP LỆ CỦA TỌA ĐỘ
-            if (isNaN(startX) || isNaN(startY) || isNaN(detection.width) || isNaN(detection.height)) {
-                console.warn(`❌ Invalid coordinates for detection ${index}: start=[${startX}, ${startY}], size=${detection.width}x${detection.height}`);
+            // SỬA: ĐẢM BẢO width và height TỒN TẠI
+            width = detection.width || bbox.width || 100; // Fallback nếu undefined
+            height = detection.height || bbox.height || 100; // Fallback nếu undefined
+
+            // KIỂM TRA TÍNH HỢP LỆ CỦA TẤT CẢ THAM SỐ
+            if (isNaN(startX) || isNaN(startY) || isNaN(width) || isNaN(height)) {
+                console.warn(`❌ Invalid coordinates for detection ${index}: start=[${startX}, ${startY}], size=${width}x${height}`);
+                console.warn(`🔍 Detection details:`, detection);
                 return;
             }
 
             const start = [startX, startY];
-            const size = [detection.width, detection.height];
+            const size = [width, height];
 
-            console.log(`🎨 Drawing detection ${index} at [${startX.toFixed(0)}, ${startY.toFixed(0)}] size ${detection.width.toFixed(0)}x${detection.height.toFixed(0)}`);
+            console.log(`🎨 Drawing detection ${index} at [${startX.toFixed(0)}, ${startY.toFixed(0)}] size ${width.toFixed(0)}x${height.toFixed(0)}`);
 
             // Tìm face được track
             let bestFaceId = null;
