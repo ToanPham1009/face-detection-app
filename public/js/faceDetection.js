@@ -225,7 +225,57 @@ class FaceDetector {
         return finalDetections;
     }
 
+    applyNonMaximumSuppression(detections, iouThreshold = 0.4) {
+        if (detections.length <= 1) return detections;
 
+        // Sắp xếp theo confidence giảm dần
+        const sortedDetections = [...detections].sort((a, b) => b.confidence - a.confidence);
+        const selectedDetections = [];
+
+        while (sortedDetections.length > 0) {
+            // Lấy detection có confidence cao nhất
+            const bestDetection = sortedDetections.shift();
+            selectedDetections.push(bestDetection);
+
+            // Loại bỏ các detection overlap nhiều với best detection
+            for (let i = sortedDetections.length - 1; i >= 0; i--) {
+                const iou = this.calculateIoU(bestDetection, sortedDetections[i]);
+                if (iou > iouThreshold) {
+                    console.log(`🗑️ Removing overlapping detection (IoU: ${iou.toFixed(3)})`);
+                    sortedDetections.splice(i, 1);
+                }
+            }
+        }
+
+        return selectedDetections;
+    }
+
+    // THÊM: Tính IoU cho NMS
+    calculateIoU(face1, face2) {
+        const box1 = this.getBoundingBoxFromFace(face1);
+        const box2 = this.getBoundingBoxFromFace(face2);
+
+        const x1 = Math.max(box1.left, box2.left);
+        const y1 = Math.max(box1.top, box2.top);
+        const x2 = Math.min(box1.right, box2.right);
+        const y2 = Math.min(box1.bottom, box2.bottom);
+
+        const intersection = Math.max(0, x2 - x1) * Math.max(0, y2 - y1);
+        const area1 = (box1.right - box1.left) * (box1.bottom - box1.top);
+        const area2 = (box2.right - box2.left) * (box2.bottom - box2.top);
+        const union = area1 + area2 - intersection;
+
+        return union > 0 ? intersection / union : 0;
+    }
+
+    getBoundingBoxFromFace(face) {
+        return {
+            left: face.boundingBox.originX,
+            top: face.boundingBox.originY,
+            right: face.boundingBox.originX + face.boundingBox.width,
+            bottom: face.boundingBox.originY + face.boundingBox.height
+        };
+    }
 
     drawMediaPipeDetections(formattedFaces, trackedFaces) {
         const trackedFaceMap = new Map();
@@ -951,57 +1001,28 @@ class ImprovedFaceTracker {
         return face;
     }
 
-    applyNonMaximumSuppression(detections, iouThreshold = 0.4) {
-        if (detections.length <= 1) return detections;
+    // calculateDetectionIoU(face1, face2) {
+    //     try {
+    //         const box1 = this.getBoundingBoxFromFace(face1);
+    //         const box2 = this.getBoundingBoxFromFace(face2);
 
-        // Sắp xếp theo confidence giảm dần
-        const sortedDetections = [...detections].sort((a, b) => b.confidence - a.confidence);
-        const selectedDetections = [];
+    //         const x1 = Math.max(box1.left, box2.left);
+    //         const y1 = Math.max(box1.top, box2.top);
+    //         const x2 = Math.min(box1.right, box2.right);
+    //         const y2 = Math.min(box1.bottom, box2.bottom);
 
-        while (sortedDetections.length > 0) {
-            // Lấy detection có confidence cao nhất
-            const bestDetection = sortedDetections.shift();
-            selectedDetections.push(bestDetection);
+    //         const intersection = Math.max(0, x2 - x1) * Math.max(0, y2 - y1);
+    //         const area1 = (box1.right - box1.left) * (box1.bottom - box1.top);
+    //         const area2 = (box2.right - box2.left) * (box2.bottom - box2.top);
+    //         const union = area1 + area2 - intersection;
 
-            // Loại bỏ các detection overlap nhiều với best detection
-            for (let i = sortedDetections.length - 1; i >= 0; i--) {
-                const iou = this.calculateIoU(bestDetection, sortedDetections[i]);
-                if (iou > iouThreshold) {
-                    console.log(`🗑️ Removing overlapping detection (IoU: ${iou.toFixed(3)})`);
-                    sortedDetections.splice(i, 1);
-                }
-            }
-        }
-
-        return selectedDetections;
-    }
-
-    // THÊM: Tính IoU cho NMS
-    calculateIoU(face1, face2) {
-        const box1 = this.getBoundingBoxFromFace(face1);
-        const box2 = this.getBoundingBoxFromFace(face2);
-
-        const x1 = Math.max(box1.left, box2.left);
-        const y1 = Math.max(box1.top, box2.top);
-        const x2 = Math.min(box1.right, box2.right);
-        const y2 = Math.min(box1.bottom, box2.bottom);
-
-        const intersection = Math.max(0, x2 - x1) * Math.max(0, y2 - y1);
-        const area1 = (box1.right - box1.left) * (box1.bottom - box1.top);
-        const area2 = (box2.right - box2.left) * (box2.bottom - box2.top);
-        const union = area1 + area2 - intersection;
-
-        return union > 0 ? intersection / union : 0;
-    }
-
-    getBoundingBoxFromFace(face) {
-        return {
-            left: face.boundingBox.originX,
-            top: face.boundingBox.originY,
-            right: face.boundingBox.originX + face.boundingBox.width,
-            bottom: face.boundingBox.originY + face.boundingBox.height
-        };
-    }
+    //         const iou = union > 0 ? intersection / union : 0;
+    //         return iou;
+    //     } catch (error) {
+    //         console.error('❌ Error in IoU calculation:', error);
+    //         return 0;
+    //     }
+    // }
 
     getBoundingBox(face) {
         try {
