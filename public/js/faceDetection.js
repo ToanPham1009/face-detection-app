@@ -143,17 +143,31 @@ class FaceDetector {
             }
 
             // DEBUG: Kiểm tra cấu trúc boundingBox
-            console.log(`🔍 BoundingBox ${index}:`, bbox);
+            console.log(`🔍 BoundingBox ${index} structure:`, Object.keys(bbox));
 
-            // Chuyển đổi normalized coordinates sang pixel coordinates
-            const widthPx = bbox.width * this.canvas.width;
-            const heightPx = bbox.height * this.canvas.height;
-            const centerXPx = (bbox.originX + bbox.width / 2) * this.canvas.width;
-            const centerYPx = (bbox.originY + bbox.height / 2) * this.canvas.height;
+            // SỬA QUAN TRỌNG: Xử lý cả 2 loại boundingBox structure
+            let widthPx, heightPx, centerXPx, centerYPx, startXPx, startYPx;
 
-            // SỬA QUAN TRỌNG: Tính toán start coordinates từ originX và originY
-            const startXPx = bbox.originX * this.canvas.width;
-            const startYPx = bbox.originY * this.canvas.height;
+            if (bbox.xCenter !== undefined && bbox.yCenter !== undefined) {
+                // Structure 1: xCenter, yCenter, width, height
+                widthPx = bbox.width * this.canvas.width;
+                heightPx = bbox.height * this.canvas.height;
+                centerXPx = bbox.xCenter * this.canvas.width;
+                centerYPx = bbox.yCenter * this.canvas.height;
+                startXPx = (bbox.xCenter - bbox.width / 2) * this.canvas.width;
+                startYPx = (bbox.yCenter - bbox.height / 2) * this.canvas.height;
+            } else if (bbox.originX !== undefined && bbox.originY !== undefined) {
+                // Structure 2: originX, originY, width, height
+                widthPx = bbox.width * this.canvas.width;
+                heightPx = bbox.height * this.canvas.height;
+                startXPx = bbox.originX * this.canvas.width;
+                startYPx = bbox.originY * this.canvas.height;
+                centerXPx = (bbox.originX + bbox.width / 2) * this.canvas.width;
+                centerYPx = (bbox.originY + bbox.height / 2) * this.canvas.height;
+            } else {
+                console.warn(`❌ Unknown boundingBox structure:`, bbox);
+                return null;
+            }
 
             // Xử lý confidence undefined
             const confidence = det.confidence || 0.8;
@@ -164,9 +178,8 @@ class FaceDetector {
                 width: widthPx,
                 height: heightPx,
                 landmarks: det.landmarks || [],
-                // SỬA: TẠO boundingBox mới với start coordinates được tính toán
                 boundingBox: {
-                    start: [startXPx, startYPx], // SỬ DỤNG TỌA ĐỘ ĐÃ TÍNH
+                    start: [startXPx, startYPx],
                     end: [startXPx + widthPx, startYPx + heightPx],
                     originX: startXPx,
                     originY: startYPx,
@@ -197,20 +210,25 @@ class FaceDetector {
                 return;
             }
 
-            // SỬA: SỬ DỤNG TỌA ĐỘ TRỰC TIẾP TỪ FACE DATA NẾU boundingBox.start KHÔNG TỒN TẠI
+            // SỬA: SỬ DỤNG TỌA ĐỘ TRỰC TIẾP TỪ FACE DATA
             let startX, startY;
 
-            if (bbox.start && bbox.start[0] !== undefined && bbox.start[1] !== undefined) {
+            if (bbox.start && !isNaN(bbox.start[0]) && !isNaN(bbox.start[1])) {
                 startX = bbox.start[0];
                 startY = bbox.start[1];
-            } else if (bbox.originX !== undefined && bbox.originY !== undefined) {
-                // SỬ DỤNG originX, originY nếu start không tồn tại
+            } else if (bbox.originX !== undefined && !isNaN(bbox.originX) && !isNaN(bbox.originY)) {
                 startX = bbox.originX;
                 startY = bbox.originY;
             } else {
-                // TÍNH TOÁN TỪ CENTER NẾU KHÔNG CÓ TỌA ĐỘ START
+                // TÍNH TOÁN TỪ CENTER NẾU KHÔNG CÓ TỌA ĐỘ START HỢP LỆ
                 startX = detection.x - detection.width / 2;
                 startY = detection.y - detection.height / 2;
+            }
+
+            // KIỂM TRA TÍNH HỢP LỆ CỦA TỌA ĐỘ
+            if (isNaN(startX) || isNaN(startY) || isNaN(detection.width) || isNaN(detection.height)) {
+                console.warn(`❌ Invalid coordinates for detection ${index}: start=[${startX}, ${startY}], size=${detection.width}x${detection.height}`);
+                return;
             }
 
             const start = [startX, startY];
@@ -223,6 +241,11 @@ class FaceDetector {
             let minDistance = Infinity;
 
             for (const [faceId, trackedFace] of trackedFaceMap) {
+                // KIỂM TRA TÍNH HỢP LỆ CỦA TRACKED FACE
+                if (!trackedFace || isNaN(trackedFace.x) || isNaN(trackedFace.y)) {
+                    continue;
+                }
+
                 const distance = Math.sqrt(
                     Math.pow(detection.x - trackedFace.x, 2) +
                     Math.pow(detection.y - trackedFace.y, 2)
@@ -247,10 +270,10 @@ class FaceDetector {
 
     // SỬA: Thêm điều kiện kiểm tra landmarks
     drawStableBoundingBox(start, size, trackedFace, confidence, hasGoodLandmarks) {
-        // KIỂM TRA TÍNH HỢP LỆ CỦA START COORDINATES
+        // KIỂM TRA TÍNH HỢP LỆ CỦA TẤT CẢ THAM SỐ
         if (!start || start[0] === undefined || start[1] === undefined ||
-            isNaN(start[0]) || isNaN(start[1])) {
-            console.warn('⚠️ Invalid start coordinates in drawStableBoundingBox:', start);
+            isNaN(start[0]) || isNaN(start[1]) || isNaN(size[0]) || isNaN(size[1])) {
+            console.warn('⚠️ Invalid parameters in drawStableBoundingBox:', { start, size });
             return;
         }
 
@@ -965,24 +988,29 @@ class ImprovedFaceTracker {
 
     // SỬA: KIỂM TRA NGHIÊM NGẶT HƠN
     isValidFace(face) {
-        // SỬA: Sử dụng pixel coordinates để kiểm tra
+        // KIỂM TRA TÍNH HỢP LỆ CỦA TẤT CẢ TỌA ĐỘ
+        if (!face || isNaN(face.x) || isNaN(face.y) || isNaN(face.width) || isNaN(face.height)) {
+            console.log(`❌ Invalid face coordinates: x=${face.x}, y=${face.y}, width=${face.width}, height=${face.height}`);
+            return false;
+        }
+
         console.log(`🔍 Validating face: conf=${face.confidence}, size=${face.width.toFixed(0)}x${face.height.toFixed(0)}px, landmarks=${face.landmarks?.length || 0}`);
 
-        // 1. Confidence - xử lý undefined
-        if (face.confidence < 0.3) { // Giảm ngưỡng vì confidence có thể thấp
+        // 1. Confidence
+        if (face.confidence < 0.3) {
             console.log(`❌ Low confidence: ${face.confidence}`);
             return false;
         }
 
-        // 2. Landmarks - vẫn yêu cầu
+        // 2. Landmarks
         if (!face.landmarks || face.landmarks.length < 6) {
             console.log(`❌ Insufficient landmarks: ${face.landmarks?.length || 0}`);
             return false;
         }
 
-        // 3. Kích thước - sử dụng pixel coordinates
-        const minFaceSize = 40; // pixel
-        const maxFaceSize = 400; // pixel
+        // 3. Kích thước
+        const minFaceSize = 40;
+        const maxFaceSize = 400;
 
         if (face.width < minFaceSize || face.height < minFaceSize) {
             console.log(`❌ Face too small: ${face.width.toFixed(0)}x${face.height.toFixed(0)}px`);
