@@ -89,15 +89,6 @@ class FaceDetector {
 
             console.log(`🎯 MediaPipe results: ${detections.length} raw detections`);
 
-            // DEBUG: Hiển thị chi tiết từng detection
-            detections.forEach((det, index) => {
-                console.log(`🔍 Detection ${index}:`, {
-                    confidence: det.confidence,
-                    boundingBox: det.boundingBox,
-                    landmarks: det.landmarks ? det.landmarks.length : 0
-                });
-            });
-
             // SỬA: TẠM THỜI CHẤP NHẬN TẤT CẢ DETECTIONS
             const filteredDetections = detections; // Không filter
 
@@ -106,6 +97,8 @@ class FaceDetector {
             if (filteredDetections.length > 0) {
                 const facesData = this.formatDetections(filteredDetections);
                 const trackedFaces = this.faceTracker.update(facesData);
+
+                // SỬA: TRUYỀN CẢ DETECTIONS GỐC VÀ TRACKED FACES
                 this.drawMediaPipeDetections(filteredDetections, trackedFaces);
 
                 // 3. Cập nhật thống kê
@@ -210,15 +203,37 @@ class FaceDetector {
         console.log(`🎯 Drawing ${detections.length} detections`);
 
         detections.forEach((detection, index) => {
-            // SỬA: KIỂM TRA TÍNH HỢP LỆ CỦA DETECTION TRƯỚC
-            if (!detection || !detection.boundingBox) {
-                console.warn(`⚠️ Detection ${index} is invalid:`, detection);
+            // SỬA: KIỂM TRA XEM ĐÂY CÓ PHẢI LÀ DETECTION GỐC HAY TRACKED FACE
+            if (!detection.boundingBox) {
+                // Nếu là tracked face (không có boundingBox), tính toán từ face data
+                console.log(`🔄 Processing tracked face ${detection.id} for drawing`);
+
+                const startX = detection.x - detection.width / 2;
+                const startY = detection.y - detection.height / 2;
+                const width = detection.width;
+                const height = detection.height;
+
+                // KIỂM TRA TÍNH HỢP LỆ
+                if (isNaN(startX) || isNaN(startY) || isNaN(width) || isNaN(height)) {
+                    console.warn(`❌ Invalid tracked face ${detection.id}: start=[${startX}, ${startY}], size=${width}x${height}`);
+                    return;
+                }
+
+                const start = [startX, startY];
+                const size = [width, height];
+
+                console.log(`🎨 Drawing tracked face ${detection.id} at [${startX.toFixed(0)}, ${startY.toFixed(0)}] size ${width.toFixed(0)}x${height.toFixed(0)}`);
+
+                // Vẽ bounding box cho tracked face
+                const confidence = detection.confidence || 0.8;
+                this.drawStableBoundingBox(start, size, detection, confidence, true);
                 return;
             }
 
+            // Nếu là detection gốc (có boundingBox)
             const bbox = detection.boundingBox;
 
-            // SỬA: SỬ DỤNG TỌA ĐỘ TRỰC TIẾP TỪ FACE DATA - ĐẢM BẢO CÓ width và height
+            // SỬA: SỬ DỤNG TỌA ĐỘ TRỰC TIẾP TỪ FACE DATA
             let startX, startY, width, height;
 
             if (bbox.start && !isNaN(bbox.start[0]) && !isNaN(bbox.start[1])) {
@@ -233,9 +248,9 @@ class FaceDetector {
                 startY = detection.y - detection.height / 2;
             }
 
-            // SỬA: ĐẢM BẢO width và height TỒN TẠI
-            width = detection.width || bbox.width || 100; // Fallback nếu undefined
-            height = detection.height || bbox.height || 100; // Fallback nếu undefined
+            // SỬA: ĐẢM BẢO width và height TỒN TẠI - SỬ DỤNG PIXEL VALUES
+            width = detection.width || bbox.width || 100;
+            height = detection.height || bbox.height || 100;
 
             // KIỂM TRA TÍNH HỢP LỆ CỦA TẤT CẢ THAM SỐ
             if (isNaN(startX) || isNaN(startY) || isNaN(width) || isNaN(height)) {
