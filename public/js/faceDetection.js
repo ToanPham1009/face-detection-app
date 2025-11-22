@@ -89,17 +89,17 @@ class FaceDetector {
 
             console.log(`🎯 MediaPipe results: ${detections.length} raw detections`);
 
-            // SỬA: TẠM THỜI CHẤP NHẬN TẤT CẢ DETECTIONS
-            const filteredDetections = detections; // Không filter
+            // SỬA: TẠO FORMATTED FACES TRƯỚC
+            const formattedFaces = this.formatDetections(detections);
 
-            console.log(`✅ All detections: ${filteredDetections.length}`);
+            console.log(`✅ Formatted faces: ${formattedFaces.length}`);
 
-            if (filteredDetections.length > 0) {
-                const facesData = this.formatDetections(filteredDetections);
-                const trackedFaces = this.faceTracker.update(facesData);
+            if (formattedFaces.length > 0) {
+                // SỬA: SỬ DỤNG FORMATTED FACES CHO TRACKER VÀ VẼ
+                const trackedFaces = this.faceTracker.update(formattedFaces);
 
-                // SỬA: TRUYỀN CẢ DETECTIONS GỐC VÀ TRACKED FACES
-                this.drawMediaPipeDetections(filteredDetections, trackedFaces);
+                // SỬA: TRUYỀN FORMATTED FACES (ĐÃ CÓ PIXEL COORDINATES) THAY VÌ DETECTIONS GỐC
+                this.drawMediaPipeDetections(formattedFaces, trackedFaces);
 
                 // 3. Cập nhật thống kê
                 if (this.isTracking) {
@@ -194,89 +194,44 @@ class FaceDetector {
         }).filter(face => face !== null);
     }
 
-    drawMediaPipeDetections(detections, trackedFaces) {
+    drawMediaPipeDetections(formattedFaces, trackedFaces) {
         const trackedFaceMap = new Map();
         trackedFaces.forEach(face => {
             trackedFaceMap.set(face.id, face);
         });
 
-        console.log(`🎯 Drawing ${detections.length} detections`);
+        console.log(`🎯 Drawing ${formattedFaces.length} formatted faces`);
 
-        detections.forEach((detection, index) => {
-            // SỬA: KIỂM TRA XEM ĐÂY CÓ PHẢI LÀ DETECTION GỐC HAY TRACKED FACE
-            if (!detection.boundingBox) {
-                // Nếu là tracked face (không có boundingBox), tính toán từ face data
-                console.log(`🔄 Processing tracked face ${detection.id} for drawing`);
+        formattedFaces.forEach((face, index) => {
+            // SỬA: formattedFaces ĐÃ CÓ PIXEL COORDINATES, CHỈ CẦN SỬ DỤNG TRỰC TIẾP
+            const startX = face.boundingBox.start[0];
+            const startY = face.boundingBox.start[1];
+            const width = face.width;
+            const height = face.height;
 
-                const startX = detection.x - detection.width / 2;
-                const startY = detection.y - detection.height / 2;
-                const width = detection.width;
-                const height = detection.height;
-
-                // KIỂM TRA TÍNH HỢP LỆ
-                if (isNaN(startX) || isNaN(startY) || isNaN(width) || isNaN(height)) {
-                    console.warn(`❌ Invalid tracked face ${detection.id}: start=[${startX}, ${startY}], size=${width}x${height}`);
-                    return;
-                }
-
-                const start = [startX, startY];
-                const size = [width, height];
-
-                console.log(`🎨 Drawing tracked face ${detection.id} at [${startX.toFixed(0)}, ${startY.toFixed(0)}] size ${width.toFixed(0)}x${height.toFixed(0)}`);
-
-                // Vẽ bounding box cho tracked face
-                const confidence = detection.confidence || 0.8;
-                this.drawStableBoundingBox(start, size, detection, confidence, true);
-                return;
-            }
-
-            // Nếu là detection gốc (có boundingBox)
-            const bbox = detection.boundingBox;
-
-            // SỬA: SỬ DỤNG TỌA ĐỘ TRỰC TIẾP TỪ FACE DATA
-            let startX, startY, width, height;
-
-            if (bbox.start && !isNaN(bbox.start[0]) && !isNaN(bbox.start[1])) {
-                startX = bbox.start[0];
-                startY = bbox.start[1];
-            } else if (bbox.originX !== undefined && !isNaN(bbox.originX) && !isNaN(bbox.originY)) {
-                startX = bbox.originX;
-                startY = bbox.originY;
-            } else {
-                // TÍNH TOÁN TỪ CENTER NẾU KHÔNG CÓ TỌA ĐỘ START HỢP LỆ
-                startX = detection.x - detection.width / 2;
-                startY = detection.y - detection.height / 2;
-            }
-
-            // SỬA: ĐẢM BẢO width và height TỒN TẠI - SỬ DỤNG PIXEL VALUES
-            width = detection.width || bbox.width || 100;
-            height = detection.height || bbox.height || 100;
-
-            // KIỂM TRA TÍNH HỢP LỆ CỦA TẤT CẢ THAM SỐ
+            // KIỂM TRA TÍNH HỢP LỆ
             if (isNaN(startX) || isNaN(startY) || isNaN(width) || isNaN(height)) {
-                console.warn(`❌ Invalid coordinates for detection ${index}: start=[${startX}, ${startY}], size=${width}x${height}`);
-                console.warn(`🔍 Detection details:`, detection);
+                console.warn(`❌ Invalid coordinates for face ${index}: start=[${startX}, ${startY}], size=${width}x${height}`);
                 return;
             }
 
             const start = [startX, startY];
             const size = [width, height];
 
-            console.log(`🎨 Drawing detection ${index} at [${startX.toFixed(0)}, ${startY.toFixed(0)}] size ${width.toFixed(0)}x${height.toFixed(0)}`);
+            console.log(`🎨 Drawing face ${index} at [${startX.toFixed(0)}, ${startY.toFixed(0)}] size ${width.toFixed(0)}x${height.toFixed(0)}`);
 
             // Tìm face được track
             let bestFaceId = null;
             let minDistance = Infinity;
 
             for (const [faceId, trackedFace] of trackedFaceMap) {
-                // KIỂM TRA TÍNH HỢP LỆ CỦA TRACKED FACE
                 if (!trackedFace || isNaN(trackedFace.x) || isNaN(trackedFace.y)) {
                     continue;
                 }
 
                 const distance = Math.sqrt(
-                    Math.pow(detection.x - trackedFace.x, 2) +
-                    Math.pow(detection.y - trackedFace.y, 2)
+                    Math.pow(face.x - trackedFace.x, 2) +
+                    Math.pow(face.y - trackedFace.y, 2)
                 );
 
                 if (distance < 50 && distance < minDistance) {
@@ -288,11 +243,11 @@ class FaceDetector {
             const trackedFace = bestFaceId ? trackedFaceMap.get(bestFaceId) : null;
 
             // Vẽ bounding box
-            const confidence = detection.confidence || 0;
-            this.drawStableBoundingBox(start, size, trackedFace, confidence, detection.landmarks?.length >= 6);
+            const confidence = face.confidence || 0;
+            this.drawStableBoundingBox(start, size, trackedFace, confidence, face.landmarks?.length >= 6);
 
             // Vẽ landmarks
-            this.drawMediaPipeLandmarks(detection.landmarks);
+            this.drawMediaPipeLandmarks(face.landmarks);
         });
     }
 
@@ -311,22 +266,22 @@ class FaceDetector {
         let boxColor, textColor;
 
         if (this.isTracking && trackedFace && trackedFace.isTracked) {
-            boxColor = '#00ff00';
+            boxColor = '#00ff00'; // Xanh lá - đang tracked
             textColor = '#00ff00';
         } else if (confidence >= 0.7) {
-            boxColor = '#00ff00';
+            boxColor = '#00ff00'; // Xanh lá - confidence cao
             textColor = '#00ff00';
         } else if (confidence >= 0.5) {
-            boxColor = '#ffff00';
+            boxColor = '#ffff00'; // Vàng - confidence trung bình
             textColor = '#ffff00';
         } else {
-            boxColor = '#ff4444';
+            boxColor = '#ff4444'; // Đỏ - confidence thấp
             textColor = '#ff4444';
         }
 
         this.ctx.strokeStyle = boxColor;
         this.ctx.lineWidth = trackedFace ? 3 : 2;
-        this.ctx.shadowBlur = 6;
+        this.ctx.shadowBlur = 8;
         this.ctx.shadowColor = boxColor;
 
         // Vẽ bounding box
@@ -554,6 +509,10 @@ class FaceDetector {
         this.ctx.font = 'bold 16px Arial';
         this.ctx.textAlign = 'center';
         this.ctx.fillText('🔍 Đang tìm khuôn mặt...', this.canvas.width / 2, 30);
+
+        // Thêm thông tin debug
+        this.ctx.font = '12px Arial';
+        this.ctx.fillText('Camera đang hoạt động - Chờ phát hiện khuôn mặt', this.canvas.width / 2, 50);
     }
 
     drawStatusInfo() {
