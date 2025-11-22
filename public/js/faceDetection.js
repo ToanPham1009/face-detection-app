@@ -142,30 +142,36 @@ class FaceDetector {
                 return null;
             }
 
-            // SỬA: Chuyển đổi normalized coordinates sang pixel coordinates
+            // Chuyển đổi normalized coordinates sang pixel coordinates
             const widthPx = bbox.width * this.canvas.width;
             const heightPx = bbox.height * this.canvas.height;
             const centerXPx = (bbox.originX + bbox.width / 2) * this.canvas.width;
             const centerYPx = (bbox.originY + bbox.height / 2) * this.canvas.height;
+            const startXPx = bbox.originX * this.canvas.width;
+            const startYPx = bbox.originY * this.canvas.height;
 
-            // SỬA: Xử lý confidence undefined
-            const confidence = det.confidence || 0.8; // Nếu undefined thì đặt mặc định là 0.8
+            // Xử lý confidence undefined
+            const confidence = det.confidence || 0.8;
 
             const faceData = {
-                x: centerXPx, // SỬA: dùng pixel coordinates
+                x: centerXPx,
                 y: centerYPx,
                 width: widthPx,
                 height: heightPx,
                 landmarks: det.landmarks || [],
                 boundingBox: {
-                    start: [bbox.originX * this.canvas.width, bbox.originY * this.canvas.height],
-                    end: [(bbox.originX + bbox.width) * this.canvas.width, (bbox.originY + bbox.height) * this.canvas.height]
+                    start: [startXPx, startYPx], // SỬA: Đảm bảo có start coordinates
+                    end: [startXPx + widthPx, startYPx + heightPx],
+                    originX: startXPx, // THÊM: để backup
+                    originY: startYPx,
+                    width: widthPx,
+                    height: heightPx
                 },
                 confidence: confidence,
-                rawConfidence: det.confidence // Giữ giá trị gốc để debug
+                rawConfidence: det.confidence
             };
 
-            console.log(`📝 Formatted face ${index}: confidence=${faceData.confidence}, size=${faceData.width.toFixed(0)}x${faceData.height.toFixed(0)}px, landmarks=${faceData.landmarks.length}`);
+            console.log(`📝 Formatted face ${index}: confidence=${faceData.confidence}, size=${faceData.width.toFixed(0)}x${faceData.height.toFixed(0)}px`);
             return faceData;
         }).filter(face => face !== null);
     }
@@ -180,11 +186,20 @@ class FaceDetector {
 
         detections.forEach((detection, index) => {
             const bbox = detection.boundingBox;
-            if (!bbox) return;
+            if (!bbox) {
+                console.warn(`⚠️ Detection ${index} has no boundingBox`);
+                return;
+            }
 
-            // SỬA: Sử dụng pixel coordinates đã được convert
-            const start = bbox.start; // Đã là pixel coordinates
-            const size = [detection.width, detection.height]; // Đã là pixel coordinates
+            // SỬA: Sử dụng backup coordinates nếu start không tồn tại
+            const start = bbox.start || [bbox.originX, bbox.originY];
+            const size = [detection.width, detection.height];
+
+            // Đảm bảo start coordinates tồn tại
+            if (!start || start[0] === undefined || start[1] === undefined) {
+                console.warn(`⚠️ Detection ${index} has invalid start coordinates:`, start);
+                return;
+            }
 
             // Tìm face được track
             let bestFaceId = null;
@@ -196,7 +211,7 @@ class FaceDetector {
                     Math.pow(detection.y - trackedFace.y, 2)
                 );
 
-                if (distance < 50 && distance < minDistance) { // Giảm khoảng cách vì đang dùng pixel
+                if (distance < 50 && distance < minDistance) {
                     minDistance = distance;
                     bestFaceId = faceId;
                 }
@@ -207,6 +222,9 @@ class FaceDetector {
             // Vẽ bounding box
             const confidence = detection.confidence || 0;
             this.drawStableBoundingBox(start, size, trackedFace, confidence, detection.landmarks?.length >= 6);
+
+            // Vẽ landmarks
+            this.drawMediaPipeLandmarks(detection.landmarks);
         });
     }
 
@@ -717,9 +735,14 @@ class ImprovedFaceTracker {
 
         const results = [];
 
-        // TẠM THỜI: CHẤP NHẬN TẤT CẢ FACES
         for (const currentFace of currentFaces) {
-            console.log(`🔍 Processing face: conf=${currentFace.confidence}, size=${currentFace.width}x${currentFace.height}`);
+            console.log(`🔍 Processing face: conf=${currentFace.confidence}, size=${currentFace.width.toFixed(0)}x${currentFace.height.toFixed(0)}`);
+
+            // KIỂM TRA FACE HỢP LỆ TRƯỚC KHI XỬ LÝ
+            if (!this.isValidFace(currentFace)) {
+                console.log(`🚫 Skipping invalid face`);
+                continue;
+            }
 
             let bestMatch = null;
             let bestScore = 0;
@@ -727,15 +750,23 @@ class ImprovedFaceTracker {
             for (const [id, knownFace] of this.faces.entries()) {
                 if (knownFace.seen) continue;
 
+                // SỬA: THÊM KIỂM TRA ĐỂ TRÁNH NaN
                 const iouScore = this.calculateIoU(currentFace, knownFace);
                 const centerDistance = this.calculateDistance(currentFace, knownFace);
+                const sizeSimilarity = this.calculateSizeSimilarity(currentFace, knownFace);
 
-                // SCORE ĐƠN GIẢN ĐỂ DEBUG
-                const totalScore = iouScore * 0.7 + Math.max(0, 1 - centerDistance / 100) * 0.3;
+                // ĐẢM BẢO KHÔNG CÓ NaN
+                const safeIou = isNaN(iouScore) ? 0 : iouScore;
+                const safeDistance = isNaN(centerDistance) ? 100 : centerDistance;
+                const safeSizeSimilarity = isNaN(sizeSimilarity) ? 0 : sizeSimilarity;
 
-                console.log(`🎯 Matching score: ${totalScore.toFixed(3)}`);
+                const totalScore = (safeIou * 0.5) +
+                    (Math.max(0, 1 - safeDistance / 80) * 0.4) +
+                    (safeSizeSimilarity * 0.1);
 
-                if (totalScore > 0.1 && totalScore > bestScore) {
+                console.log(`🎯 Matching score: ${totalScore.toFixed(3)} (IoU: ${safeIou.toFixed(3)}, dist: ${safeDistance.toFixed(1)})`);
+
+                if (totalScore > 0.3 && totalScore > bestScore) {
                     bestScore = totalScore;
                     bestMatch = knownFace;
                 }
@@ -757,7 +788,6 @@ class ImprovedFaceTracker {
                     ...this.getSmoothedPosition(bestMatch)
                 });
             } else {
-                // TẠM THỜI: LUÔN TẠO FACE MỚI
                 console.log(`🆕 Creating new face`);
                 const newFace = this.createNewFace(currentFace);
                 this.faces.set(newFace.id, newFace);
@@ -837,31 +867,55 @@ class ImprovedFaceTracker {
     }
 
     calculateIoU(face1, face2) {
-        const box1 = this.getBoundingBox(face1);
-        const box2 = this.getBoundingBox(face2);
+        try {
+            const box1 = this.getBoundingBox(face1);
+            const box2 = this.getBoundingBox(face2);
 
-        const x1 = Math.max(box1.left, box2.left);
-        const y1 = Math.max(box1.top, box2.top);
-        const x2 = Math.min(box1.right, box2.right);
-        const y2 = Math.min(box1.bottom, box2.bottom);
+            // KIỂM TRA TÍNH HỢP LỆ CỦA BOUNDING BOX
+            if (!box1 || !box2 ||
+                isNaN(box1.left) || isNaN(box1.right) ||
+                isNaN(box2.left) || isNaN(box2.right)) {
+                console.warn('⚠️ Invalid bounding box in IoU calculation');
+                return 0;
+            }
 
-        const intersection = Math.max(0, x2 - x1) * Math.max(0, y2 - y1);
-        const area1 = (box1.right - box1.left) * (box1.bottom - box1.top);
-        const area2 = (box2.right - box2.left) * (box2.bottom - box2.top);
-        const union = area1 + area2 - intersection;
+            const x1 = Math.max(box1.left, box2.left);
+            const y1 = Math.max(box1.top, box2.top);
+            const x2 = Math.min(box1.right, box2.right);
+            const y2 = Math.min(box1.bottom, box2.bottom);
 
-        return union > 0 ? intersection / union : 0;
+            const intersection = Math.max(0, x2 - x1) * Math.max(0, y2 - y1);
+            const area1 = (box1.right - box1.left) * (box1.bottom - box1.top);
+            const area2 = (box2.right - box2.left) * (box2.bottom - box2.top);
+            const union = area1 + area2 - intersection;
+
+            return union > 0 ? intersection / union : 0;
+        } catch (error) {
+            console.error('❌ Error in IoU calculation:', error);
+            return 0;
+        }
     }
 
     getBoundingBox(face) {
-        const halfWidth = face.width / 2;
-        const halfHeight = face.height / 2;
-        return {
-            left: face.x - halfWidth,
-            top: face.y - halfHeight,
-            right: face.x + halfWidth,
-            bottom: face.y + halfHeight
-        };
+        try {
+            // KIỂM TRA TÍNH HỢP LỆ CỦA FACE
+            if (!face || isNaN(face.x) || isNaN(face.y) || isNaN(face.width) || isNaN(face.height)) {
+                console.warn('⚠️ Invalid face in getBoundingBox:', face);
+                return { left: 0, top: 0, right: 0, bottom: 0 };
+            }
+
+            const halfWidth = face.width / 2;
+            const halfHeight = face.height / 2;
+            return {
+                left: face.x - halfWidth,
+                top: face.y - halfHeight,
+                right: face.x + halfWidth,
+                bottom: face.y + halfHeight
+            };
+        } catch (error) {
+            console.error('❌ Error in getBoundingBox:', error);
+            return { left: 0, top: 0, right: 0, bottom: 0 };
+        }
     }
 
     calculateSizeSimilarity(face1, face2) {
