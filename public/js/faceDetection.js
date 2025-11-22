@@ -54,10 +54,10 @@ class FaceDetector {
                 }
             });
 
-            // SỬA: Tăng confidence threshold để giảm false positive
+            // SỬA: Giảm confidence threshold xuống 0.5
             this.faceDetection.setOptions({
                 model: 'short',
-                minDetectionConfidence: 0.7  // TĂNG LÊN 0.7 để chỉ detect khuôn mặt thật
+                minDetectionConfidence: 0.5  // GIẢM từ 0.7 xuống 0.5
             });
 
             this.faceDetection.onResults((results) => {
@@ -69,7 +69,6 @@ class FaceDetector {
             console.log('✅ MediaPipe Face Detection loaded successfully');
         } catch (error) {
             console.error('❌ Error loading MediaPipe:', error);
-            // Fallback để không break ứng dụng
             this.modelsLoaded = true;
         } finally {
             this.isModelLoading = false;
@@ -85,23 +84,23 @@ class FaceDetector {
             // 1. Vẽ video frame
             this.drawVideoFrame();
 
-            // 2. Xử lý detections với filter chặt chẽ hơn
+            // 2. Xử lý detections với filter cân bằng hơn
             const detections = results.detections || [];
 
             console.log(`🎯 MediaPipe results: ${detections.length} raw detections`);
 
-            // SỬA: Filter chặt chẽ hơn - chỉ chấp nhận confidence cao
+            // SỬA: Filter cân bằng hơn
             const filteredDetections = detections.filter(det => {
                 const confidence = det.confidence || 0;
                 const hasLandmarks = det.landmarks && det.landmarks.length >= 6;
-                
+
                 console.log(`📊 Detection: confidence=${confidence}, landmarks=${hasLandmarks}`);
-                
-                // CHỈ CHẤP NHẬN: confidence cao VÀ có đủ landmarks
-                return confidence >= 0.7 && hasLandmarks;
+
+                // SỬA: Chấp nhận confidence thấp hơn nhưng vẫn cần landmarks
+                return confidence >= 0.5 && hasLandmarks;
             });
 
-            console.log(`✅ High-quality detections: ${filteredDetections.length}/${detections.length}`);
+            console.log(`✅ Quality detections: ${filteredDetections.length}/${detections.length}`);
 
             if (filteredDetections.length > 0) {
                 const facesData = this.formatDetections(filteredDetections);
@@ -184,8 +183,8 @@ class FaceDetector {
 
             for (const [faceId, trackedFace] of trackedFaceMap) {
                 const distance = Math.sqrt(
-                    Math.pow(bbox.originX + bbox.width/2 - trackedFace.x, 2) +
-                    Math.pow(bbox.originY + bbox.height/2 - trackedFace.y, 2)
+                    Math.pow(bbox.originX + bbox.width / 2 - trackedFace.x, 2) +
+                    Math.pow(bbox.originY + bbox.height / 2 - trackedFace.y, 2)
                 );
 
                 if (distance < 80 && distance < minDistance) {
@@ -211,7 +210,7 @@ class FaceDetector {
 
         // Xác định màu sắc dựa trên chất lượng detection
         let boxColor, textColor;
-        
+
         if (this.isTracking && trackedFace && trackedFace.isTracked) {
             boxColor = '#00ff00'; // Xanh lá - đang tracked
             textColor = '#00ff00';
@@ -238,11 +237,11 @@ class FaceDetector {
         // Vẽ thông tin chất lượng
         this.ctx.fillStyle = textColor;
         this.ctx.font = 'bold 12px Arial';
-        
-        const qualityText = trackedFace ? 
-            `Face ${trackedFace.id}` : 
+
+        const qualityText = trackedFace ?
+            `Face ${trackedFace.id}` :
             `Face (${(confidence * 100).toFixed(0)}%)`;
-            
+
         this.ctx.fillText(qualityText, start[0], start[1] - 8);
 
         this.ctx.restore();
@@ -691,7 +690,7 @@ class ImprovedFaceTracker {
         this.faces = new Map();
         this.nextId = 1;
         this.maxFramesLost = 25;
-        this.trackingThreshold = 0.4; // TĂNG ngưỡng tracking
+        this.trackingThreshold = 0.3;  // GIẢM từ 0.4 xuống 0.3
         this.smoothingFactor = 0.3;
         this.positionHistory = new Map();
     }
@@ -734,13 +733,13 @@ class ImprovedFaceTracker {
                 const sizeSimilarity = this.calculateSizeSimilarity(currentFace, knownFace);
 
                 // SCORE TỔNG HỢP - TĂNG TRỌNG SỐ CHO IoU
-                const totalScore = (iouScore * 0.6) +
-                    (Math.max(0, 1 - centerDistance / 60) * 0.3) + // GIẢM khoảng cách
+                const totalScore = (iouScore * 0.5) +
+                    (Math.max(0, 1 - centerDistance / 80) * 0.4) + // GIẢM khoảng cách
                     (sizeSimilarity * 0.1);
 
                 console.log(`🎯 Matching score: ${totalScore.toFixed(3)} (IoU: ${iouScore.toFixed(3)})`);
 
-                if (totalScore > 0.4 && totalScore > bestScore) {
+                if (totalScore > 0.3 && totalScore > bestScore) {
                     bestScore = totalScore;
                     bestMatch = knownFace;
                 }
@@ -890,42 +889,42 @@ class ImprovedFaceTracker {
 
     // SỬA: KIỂM TRA NGHIÊM NGẶT HƠN
     isValidFace(face) {
-        // 1. Confidence phải cao
-        if (face.confidence < 0.7) {
+        // 1. Confidence - GIẢM ngưỡng
+        if (face.confidence < 0.5) {  // GIẢM từ 0.7 xuống 0.5
             console.log(`❌ Low confidence: ${face.confidence}`);
             return false;
         }
 
-        // 2. Phải có đủ landmarks (6 landmarks cho face detection)
+        // 2. Landmarks - VẪN YÊU CẦU
         if (!face.landmarks || face.landmarks.length < 6) {
             console.log(`❌ Insufficient landmarks: ${face.landmarks?.length || 0}`);
             return false;
         }
 
-        // 3. Kích thước hợp lý cho khuôn mặt
-        const minFaceSize = 25; // TĂNG kích thước tối thiểu
+        // 3. Kích thước - GIẢM ngưỡng tối thiểu
+        const minFaceSize = 20;  // GIẢM từ 25 xuống 20
         const maxFaceSize = 400;
-        
+
         if (face.width < minFaceSize || face.height < minFaceSize) {
             console.log(`❌ Face too small: ${face.width}x${face.height}`);
             return false;
         }
-        
+
         if (face.width > maxFaceSize || face.height > maxFaceSize) {
             console.log(`❌ Face too large: ${face.width}x${face.height}`);
             return false;
         }
 
-        // 4. Tỷ lệ aspect ratio của khuôn mặt người
+        // 4. Tỷ lệ - MỞ RỘNG ngưỡng
         const aspectRatio = face.width / face.height;
-        const validAspectRatio = aspectRatio >= 0.6 && aspectRatio <= 1.8; // Tỷ lệ khuôn mặt thực tế
-        
+        const validAspectRatio = aspectRatio >= 0.5 && aspectRatio <= 2.0;  // MỞ RỘNG từ 0.6-1.8 lên 0.5-2.0
+
         if (!validAspectRatio) {
             console.log(`❌ Invalid face aspect ratio: ${aspectRatio.toFixed(2)}`);
             return false;
         }
 
-        console.log(`✅ Valid high-quality face: ${face.width.toFixed(0)}x${face.height.toFixed(0)}, ratio: ${aspectRatio.toFixed(2)}`);
+        console.log(`✅ Valid face: ${face.width.toFixed(0)}x${face.height.toFixed(0)}, ratio: ${aspectRatio.toFixed(2)}`);
         return true;
     }
 
