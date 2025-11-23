@@ -131,8 +131,8 @@ class FaceDetector {
 
         const filteredDetections = detections
             .map((det, index) => {
-                // Lọc ngay từ đầu dựa trên confidence
-                if (det.confidence < 0.6) { // Tăng ngưỡng confidence
+                // Lọc confidence ngay từ đầu
+                if (det.confidence < 0.6) {
                     console.log(`🚫 Skipping low confidence detection: ${det.confidence}`);
                     return null;
                 }
@@ -150,17 +150,17 @@ class FaceDetector {
                 if (bbox.xCenter !== undefined && bbox.yCenter !== undefined) {
                     widthPx = bbox.width * this.canvas.width;
                     heightPx = bbox.height * this.canvas.height;
-
+                    
                     const originalStartX = (bbox.xCenter - bbox.width / 2) * this.canvas.width;
                     const originalStartY = (bbox.yCenter - bbox.height / 2) * this.canvas.height;
-
+                    
                     startXPx = this.canvas.width - originalStartX - widthPx;
                     startYPx = originalStartY;
-
+                    
                 } else if (bbox.originX !== undefined && bbox.originY !== undefined) {
                     widthPx = bbox.width * this.canvas.width;
                     heightPx = bbox.height * this.canvas.height;
-
+                    
                     startXPx = this.canvas.width - (bbox.originX * this.canvas.width) - widthPx;
                     startYPx = bbox.originY * this.canvas.height;
                 } else {
@@ -168,19 +168,19 @@ class FaceDetector {
                     return null;
                 }
 
-                // THÊM: Kiểm tra kích thước hợp lý ngay từ đầu
-                const minFaceSize = 60;  // Tăng minimum size
-                const maxFaceSize = 350; // Giảm maximum size
-
-                if (widthPx < minFaceSize || heightPx < minFaceSize ||
+                // Kiểm tra kích thước hợp lý
+                const minFaceSize = 80;
+                const maxFaceSize = 350;
+                
+                if (widthPx < minFaceSize || heightPx < minFaceSize || 
                     widthPx > maxFaceSize || heightPx > maxFaceSize) {
                     console.log(`🚫 Skipping invalid size: ${widthPx.toFixed(0)}x${heightPx.toFixed(0)}`);
                     return null;
                 }
 
-                // THÊM: Kiểm tra tỷ lệ khung hình
+                // Kiểm tra tỷ lệ khung hình
                 const aspectRatio = widthPx / heightPx;
-                if (aspectRatio < 0.6 || aspectRatio > 1.8) {
+                if (aspectRatio < 0.7 || aspectRatio > 1.5) {
                     console.log(`🚫 Skipping invalid aspect ratio: ${aspectRatio.toFixed(2)}`);
                     return null;
                 }
@@ -218,15 +218,21 @@ class FaceDetector {
             })
             .filter(face => face !== null);
 
-        // THÊM: Non-maximum suppression để loại bỏ overlapping detections
+        // Áp dụng NMS trên các detection đã format
         const finalDetections = this.applyNonMaximumSuppression(filteredDetections);
-        console.log(`✅ After filtering: ${finalDetections.length} valid faces`);
-
+        console.log(`✅ After NMS: ${finalDetections.length} valid faces`);
+        
         return finalDetections;
     }
 
+    // PHƯƠNG THỨC NMS CHO FACE DETECTOR
     applyNonMaximumSuppression(detections, iouThreshold = 0.4) {
-        if (detections.length <= 1) return detections;
+        if (detections.length <= 1) {
+            console.log('📦 No NMS needed - less than 2 detections');
+            return detections;
+        }
+
+        console.log(`🔄 Applying NMS to ${detections.length} detections`);
 
         // Sắp xếp theo confidence giảm dần
         const sortedDetections = [...detections].sort((a, b) => b.confidence - a.confidence);
@@ -239,7 +245,9 @@ class FaceDetector {
 
             // Loại bỏ các detection overlap nhiều với best detection
             for (let i = sortedDetections.length - 1; i >= 0; i--) {
-                const iou = this.calculateIoU(bestDetection, sortedDetections[i]);
+                const iou = this.calculateDetectionIoU(bestDetection, sortedDetections[i]);
+                console.log(`🔍 Comparing detection - IoU: ${iou.toFixed(3)}`);
+                
                 if (iou > iouThreshold) {
                     console.log(`🗑️ Removing overlapping detection (IoU: ${iou.toFixed(3)})`);
                     sortedDetections.splice(i, 1);
@@ -247,27 +255,35 @@ class FaceDetector {
             }
         }
 
+        console.log(`🎯 NMS completed: ${selectedDetections.length} detections remaining`);
         return selectedDetections;
     }
 
-    // THÊM: Tính IoU cho NMS
-    calculateIoU(face1, face2) {
-        const box1 = this.getBoundingBoxFromFace(face1);
-        const box2 = this.getBoundingBoxFromFace(face2);
+    // Helper method để tính IoU cho NMS
+    calculateDetectionIoU(face1, face2) {
+        try {
+            const box1 = this.getBoundingBoxFromFace(face1);
+            const box2 = this.getBoundingBoxFromFace(face2);
 
-        const x1 = Math.max(box1.left, box2.left);
-        const y1 = Math.max(box1.top, box2.top);
-        const x2 = Math.min(box1.right, box2.right);
-        const y2 = Math.min(box1.bottom, box2.bottom);
+            const x1 = Math.max(box1.left, box2.left);
+            const y1 = Math.max(box1.top, box2.top);
+            const x2 = Math.min(box1.right, box2.right);
+            const y2 = Math.min(box1.bottom, box2.bottom);
 
-        const intersection = Math.max(0, x2 - x1) * Math.max(0, y2 - y1);
-        const area1 = (box1.right - box1.left) * (box1.bottom - box1.top);
-        const area2 = (box2.right - box2.left) * (box2.bottom - box2.top);
-        const union = area1 + area2 - intersection;
+            const intersection = Math.max(0, x2 - x1) * Math.max(0, y2 - y1);
+            const area1 = (box1.right - box1.left) * (box1.bottom - box1.top);
+            const area2 = (box2.right - box2.left) * (box2.bottom - box2.top);
+            const union = area1 + area2 - intersection;
 
-        return union > 0 ? intersection / union : 0;
+            const iou = union > 0 ? intersection / union : 0;
+            return iou;
+        } catch (error) {
+            console.error('❌ Error in IoU calculation:', error);
+            return 0;
+        }
     }
 
+    // Helper method để lấy bounding box từ face data
     getBoundingBoxFromFace(face) {
         return {
             left: face.boundingBox.originX,
@@ -336,6 +352,7 @@ class FaceDetector {
 
     // SỬA: Thêm điều kiện kiểm tra landmarks
     drawStableBoundingBox(start, size, trackedFace, confidence, hasGoodLandmarks) {
+        // KIỂM TRA TÍNH HỢP LỆ CỦA TẤT CẢ THAM SỐ
         if (!start || start[0] === undefined || start[1] === undefined ||
             isNaN(start[0]) || isNaN(start[1]) || isNaN(size[0]) || isNaN(size[1])) {
             console.warn('⚠️ Invalid parameters in drawStableBoundingBox:', { start, size });
@@ -343,23 +360,24 @@ class FaceDetector {
         }
 
         this.ctx.save();
-
+        
         // QUAN TRỌNG: Reset transform trước khi vẽ bounding box
         this.ctx.setTransform(1, 0, 0, 1, 0, 0);
 
         // Xác định màu sắc
         let boxColor, textColor;
+
         if (this.isTracking && trackedFace && trackedFace.isTracked) {
-            boxColor = '#00ff00';
+            boxColor = '#00ff00'; // Xanh lá - đang tracked
             textColor = '#00ff00';
         } else if (confidence >= 0.7) {
-            boxColor = '#00ff00';
+            boxColor = '#00ff00'; // Xanh lá - confidence cao
             textColor = '#00ff00';
         } else if (confidence >= 0.5) {
-            boxColor = '#ffff00';
+            boxColor = '#ffff00'; // Vàng - confidence trung bình
             textColor = '#ffff00';
         } else {
-            boxColor = '#ff4444';
+            boxColor = '#ff4444'; // Đỏ - confidence thấp
             textColor = '#ff4444';
         }
 
@@ -368,7 +386,7 @@ class FaceDetector {
         this.ctx.shadowBlur = 8;
         this.ctx.shadowColor = boxColor;
 
-        // Vẽ bounding box với tọa độ đã được flip
+        // Vẽ bounding box
         this.ctx.strokeRect(start[0], start[1], size[0], size[1]);
 
         // Vẽ thông tin
@@ -382,7 +400,7 @@ class FaceDetector {
         this.ctx.fillText(infoText, start[0], start[1] - 8);
 
         this.ctx.restore();
-
+        
         // QUAN TRỌNG: Khôi phục transform cho video
         this.ctx.translate(this.canvas.width, 0);
         this.ctx.scale(-1, 1);
@@ -392,11 +410,11 @@ class FaceDetector {
 
     drawMediaPipeLandmarks(landmarks) {
         if (!landmarks || landmarks.length < 6) {
-            return;
+            return; // Chỉ vẽ khi có đủ landmarks
         }
 
         this.ctx.save();
-        this.ctx.fillStyle = '#00ff00';
+        this.ctx.fillStyle = '#00ff00'; // Màu xanh lá cho landmarks chất lượng cao
         this.ctx.strokeStyle = '#00ff00';
         this.ctx.lineWidth = 1.5;
 
@@ -405,7 +423,7 @@ class FaceDetector {
             // FLIP landmark theo trục X
             const flippedX = this.canvas.width - (landmark.x * this.canvas.width);
             const y = landmark.y * this.canvas.height;
-
+            
             this.ctx.beginPath();
             this.ctx.arc(flippedX, y, 3, 0, 2 * Math.PI);
             this.ctx.fill();
@@ -417,14 +435,14 @@ class FaceDetector {
         // Right eye (0, 1) - ĐÃ FLIP
         const flippedX0 = this.canvas.width - (landmarks[0].x * this.canvas.width);
         const flippedX1 = this.canvas.width - (landmarks[1].x * this.canvas.width);
-
+        
         this.ctx.moveTo(flippedX0, landmarks[0].y * this.canvas.height);
         this.ctx.lineTo(flippedX1, landmarks[1].y * this.canvas.height);
 
         // Left eye (2, 3) - ĐÃ FLIP
         const flippedX2 = this.canvas.width - (landmarks[2].x * this.canvas.width);
         const flippedX3 = this.canvas.width - (landmarks[3].x * this.canvas.width);
-
+        
         this.ctx.moveTo(flippedX2, landmarks[2].y * this.canvas.height);
         this.ctx.lineTo(flippedX3, landmarks[3].y * this.canvas.height);
 
@@ -444,7 +462,6 @@ class FaceDetector {
         this.ctx.restore();
     }
 
-    // GIỮ NGUYÊN các phương thức khác...
     startDetectionLoop() {
         if (this.isDetectionRunning) {
             console.log('⚠️ Detection loop already running');
@@ -510,7 +527,6 @@ class FaceDetector {
         }
     }
 
-    // GIỮ NGUYÊN startCamera và các phương thức khác...
     async startCamera() {
         try {
             console.log('🎯 Starting camera...');
@@ -650,7 +666,6 @@ class FaceDetector {
 
             console.log('📐 Canvas dimensions set:', this.canvas.width, 'x', this.canvas.height);
 
-            // CHỈ áp dụng transform cho video, bounding box sẽ tự flip
             this.ctx.setTransform(1, 0, 0, 1, 0, 0);
             this.ctx.translate(this.canvas.width, 0);
             this.ctx.scale(-1, 1);
@@ -685,7 +700,6 @@ class FaceDetector {
         }
     }
 
-    // GIỮ NGUYÊN các phương thức tracking và button states...
     startTracking() {
         if (!this.modelsLoaded) {
             alert('Mô hình MediaPipe chưa sẵn sàng. Vui lòng đợi...');
@@ -910,6 +924,7 @@ class ImprovedFaceTracker {
 
             if (bestMatch) {
                 console.log(`✅ Matched with existing face ${bestMatch.id}`);
+
                 this.updateFaceWithSmoothing(bestMatch, currentFace);
                 bestMatch.seen = true;
                 bestMatch.framesLost = 0;
@@ -943,14 +958,13 @@ class ImprovedFaceTracker {
             }
         }
 
-        // Dọn dẹp faces mất tích nhanh hơn
+        // Dọn dẹp faces mất tích
         this.cleanupLostFaces();
 
         console.log(`📊 Tracker results: ${results.length} faces`);
         return results;
     }
 
-    // GIỮ NGUYÊN các phương thức helper...
     updateFaceWithSmoothing(knownFace, currentFace) {
         const history = this.positionHistory.get(knownFace.id) || [];
         history.push({
@@ -1001,28 +1015,35 @@ class ImprovedFaceTracker {
         return face;
     }
 
-    // calculateDetectionIoU(face1, face2) {
-    //     try {
-    //         const box1 = this.getBoundingBoxFromFace(face1);
-    //         const box2 = this.getBoundingBoxFromFace(face2);
+    calculateIoU(face1, face2) {
+        try {
+            const box1 = this.getBoundingBox(face1);
+            const box2 = this.getBoundingBox(face2);
 
-    //         const x1 = Math.max(box1.left, box2.left);
-    //         const y1 = Math.max(box1.top, box2.top);
-    //         const x2 = Math.min(box1.right, box2.right);
-    //         const y2 = Math.min(box1.bottom, box2.bottom);
+            // KIỂM TRA TÍNH HỢP LỆ CỦA BOUNDING BOX
+            if (!box1 || !box2 ||
+                isNaN(box1.left) || isNaN(box1.right) ||
+                isNaN(box2.left) || isNaN(box2.right)) {
+                console.warn('⚠️ Invalid bounding box in IoU calculation');
+                return 0;
+            }
 
-    //         const intersection = Math.max(0, x2 - x1) * Math.max(0, y2 - y1);
-    //         const area1 = (box1.right - box1.left) * (box1.bottom - box1.top);
-    //         const area2 = (box2.right - box2.left) * (box2.bottom - box2.top);
-    //         const union = area1 + area2 - intersection;
+            const x1 = Math.max(box1.left, box2.left);
+            const y1 = Math.max(box1.top, box2.top);
+            const x2 = Math.min(box1.right, box2.right);
+            const y2 = Math.min(box1.bottom, box2.bottom);
 
-    //         const iou = union > 0 ? intersection / union : 0;
-    //         return iou;
-    //     } catch (error) {
-    //         console.error('❌ Error in IoU calculation:', error);
-    //         return 0;
-    //     }
-    // }
+            const intersection = Math.max(0, x2 - x1) * Math.max(0, y2 - y1);
+            const area1 = (box1.right - box1.left) * (box1.bottom - box1.top);
+            const area2 = (box2.right - box2.left) * (box2.bottom - box2.top);
+            const union = area1 + area2 - intersection;
+
+            return union > 0 ? intersection / union : 0;
+        } catch (error) {
+            console.error('❌ Error in IoU calculation:', error);
+            return 0;
+        }
+    }
 
     getBoundingBox(face) {
         try {
@@ -1065,10 +1086,11 @@ class ImprovedFaceTracker {
         return start * (1 - factor) + end * factor;
     }
 
+    // SỬA: KIỂM TRA NGHIÊM NGẶT HƠN
     isValidFace(face) {
         // KIỂM TRA TÍNH HỢP LỆ CỦA TẤT CẢ TỌA ĐỘ
         if (!face || isNaN(face.x) || isNaN(face.y) || isNaN(face.width) || isNaN(face.height)) {
-            console.log(`❌ Invalid face coordinates: x=${face.x}, y=${face.y}, width=${face.width}, height=${face.height}`);
+            console.log(`❌ Invalid face coordinates: x=${face?.x}, y=${face?.y}, width=${face?.width}, height=${face?.height}`);
             return false;
         }
 
@@ -1106,14 +1128,6 @@ class ImprovedFaceTracker {
 
         if (!validAspectRatio) {
             console.log(`❌ Invalid face aspect ratio: ${aspectRatio.toFixed(2)}`);
-            return false;
-        }
-
-        // 5. THÊM: Kiểm tra vị trí (tránh các detection ở rìa ảnh)
-        const margin = 30;
-        if (face.x < margin || face.x > this.canvas.width - margin ||
-            face.y < margin || face.y > this.canvas.height - margin) {
-            console.log(`❌ Face too close to edge: [${face.x.toFixed(0)}, ${face.y.toFixed(0)}]`);
             return false;
         }
 
