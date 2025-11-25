@@ -150,17 +150,17 @@ class FaceDetector {
                 if (bbox.xCenter !== undefined && bbox.yCenter !== undefined) {
                     widthPx = bbox.width * this.canvas.width;
                     heightPx = bbox.height * this.canvas.height;
-                    
+
                     const originalStartX = (bbox.xCenter - bbox.width / 2) * this.canvas.width;
                     const originalStartY = (bbox.yCenter - bbox.height / 2) * this.canvas.height;
-                    
+
                     startXPx = this.canvas.width - originalStartX - widthPx;
                     startYPx = originalStartY;
-                    
+
                 } else if (bbox.originX !== undefined && bbox.originY !== undefined) {
                     widthPx = bbox.width * this.canvas.width;
                     heightPx = bbox.height * this.canvas.height;
-                    
+
                     startXPx = this.canvas.width - (bbox.originX * this.canvas.width) - widthPx;
                     startYPx = bbox.originY * this.canvas.height;
                 } else {
@@ -171,8 +171,8 @@ class FaceDetector {
                 // Kiểm tra kích thước hợp lý
                 const minFaceSize = 80;
                 const maxFaceSize = 350;
-                
-                if (widthPx < minFaceSize || heightPx < minFaceSize || 
+
+                if (widthPx < minFaceSize || heightPx < minFaceSize ||
                     widthPx > maxFaceSize || heightPx > maxFaceSize) {
                     console.log(`🚫 Skipping invalid size: ${widthPx.toFixed(0)}x${heightPx.toFixed(0)}`);
                     return null;
@@ -221,7 +221,7 @@ class FaceDetector {
         // Áp dụng NMS trên các detection đã format
         const finalDetections = this.applyNonMaximumSuppression(filteredDetections);
         console.log(`✅ After NMS: ${finalDetections.length} valid faces`);
-        
+
         return finalDetections;
     }
 
@@ -247,7 +247,7 @@ class FaceDetector {
             for (let i = sortedDetections.length - 1; i >= 0; i--) {
                 const iou = this.calculateDetectionIoU(bestDetection, sortedDetections[i]);
                 console.log(`🔍 Comparing detection - IoU: ${iou.toFixed(3)}`);
-                
+
                 if (iou > iouThreshold) {
                     console.log(`🗑️ Removing overlapping detection (IoU: ${iou.toFixed(3)})`);
                     sortedDetections.splice(i, 1);
@@ -360,7 +360,7 @@ class FaceDetector {
         }
 
         this.ctx.save();
-        
+
         // QUAN TRỌNG: Reset transform trước khi vẽ bounding box
         this.ctx.setTransform(1, 0, 0, 1, 0, 0);
 
@@ -400,7 +400,7 @@ class FaceDetector {
         this.ctx.fillText(infoText, start[0], start[1] - 8);
 
         this.ctx.restore();
-        
+
         // QUAN TRỌNG: Khôi phục transform cho video
         this.ctx.translate(this.canvas.width, 0);
         this.ctx.scale(-1, 1);
@@ -423,7 +423,7 @@ class FaceDetector {
             // FLIP landmark theo trục X
             const flippedX = this.canvas.width - (landmark.x * this.canvas.width);
             const y = landmark.y * this.canvas.height;
-            
+
             this.ctx.beginPath();
             this.ctx.arc(flippedX, y, 3, 0, 2 * Math.PI);
             this.ctx.fill();
@@ -435,14 +435,14 @@ class FaceDetector {
         // Right eye (0, 1) - ĐÃ FLIP
         const flippedX0 = this.canvas.width - (landmarks[0].x * this.canvas.width);
         const flippedX1 = this.canvas.width - (landmarks[1].x * this.canvas.width);
-        
+
         this.ctx.moveTo(flippedX0, landmarks[0].y * this.canvas.height);
         this.ctx.lineTo(flippedX1, landmarks[1].y * this.canvas.height);
 
         // Left eye (2, 3) - ĐÃ FLIP
         const flippedX2 = this.canvas.width - (landmarks[2].x * this.canvas.width);
         const flippedX3 = this.canvas.width - (landmarks[3].x * this.canvas.width);
-        
+
         this.ctx.moveTo(flippedX2, landmarks[2].y * this.canvas.height);
         this.ctx.lineTo(flippedX3, landmarks[3].y * this.canvas.height);
 
@@ -460,6 +460,66 @@ class FaceDetector {
 
         this.ctx.stroke();
         this.ctx.restore();
+    } drawMediaPipeLandmarks(landmarks) {
+        if (!landmarks || landmarks.length < 6) {
+            return;
+        }
+
+        this.ctx.save();
+
+        // QUAN TRỌNG: Reset transform trước khi vẽ landmarks
+        this.ctx.setTransform(1, 0, 0, 1, 0, 0);
+
+        this.ctx.fillStyle = '#00ff00';
+        this.ctx.strokeStyle = '#00ff00';
+        this.ctx.lineWidth = 1.5;
+
+        // Vẽ các điểm landmarks với flip chính xác
+        landmarks.forEach((landmark, index) => {
+            // FLIP landmark theo trục X (giống với bounding box)
+            const flippedX = this.canvas.width - (landmark.x * this.canvas.width);
+            const y = landmark.y * this.canvas.height;
+
+            this.ctx.beginPath();
+            this.ctx.arc(flippedX, y, 3, 0, 2 * Math.PI);
+            this.ctx.fill();
+        });
+
+        // Vẽ connections cho landmarks face với flip
+        this.ctx.beginPath();
+
+        // Right eye (0, 1) - ĐÃ FLIP
+        const flippedX0 = this.canvas.width - (landmarks[0].x * this.canvas.width);
+        const flippedX1 = this.canvas.width - (landmarks[1].x * this.canvas.width);
+
+        this.ctx.moveTo(flippedX0, landmarks[0].y * this.canvas.height);
+        this.ctx.lineTo(flippedX1, landmarks[1].y * this.canvas.height);
+
+        // Left eye (2, 3) - ĐÃ FLIP
+        const flippedX2 = this.canvas.width - (landmarks[2].x * this.canvas.width);
+        const flippedX3 = this.canvas.width - (landmarks[3].x * this.canvas.width);
+
+        this.ctx.moveTo(flippedX2, landmarks[2].y * this.canvas.height);
+        this.ctx.lineTo(flippedX3, landmarks[3].y * this.canvas.height);
+
+        // Nose tip (4) - vẽ chữ thập - ĐÃ FLIP
+        const flippedX4 = this.canvas.width - (landmarks[4].x * this.canvas.width);
+        this.ctx.moveTo(flippedX4 - 4, landmarks[4].y * this.canvas.height);
+        this.ctx.lineTo(flippedX4 + 4, landmarks[4].y * this.canvas.height);
+        this.ctx.moveTo(flippedX4, landmarks[4].y * this.canvas.height - 4);
+        this.ctx.lineTo(flippedX4, landmarks[4].y * this.canvas.height + 4);
+
+        // Mouth (5) - vẽ đường ngang - ĐÃ FLIP
+        const flippedX5 = this.canvas.width - (landmarks[5].x * this.canvas.width);
+        this.ctx.moveTo(flippedX5 - 4, landmarks[5].y * this.canvas.height);
+        this.ctx.lineTo(flippedX5 + 4, landmarks[5].y * this.canvas.height);
+
+        this.ctx.stroke();
+        this.ctx.restore();
+
+        // KHÔI PHỤC TRANSFORM CHO VIDEO
+        this.ctx.translate(this.canvas.width, 0);
+        this.ctx.scale(-1, 1);
     }
 
     startDetectionLoop() {
@@ -838,11 +898,15 @@ class FaceDetector {
         try {
             const currentFaceCount = trackedFaces.length;
 
+            // CHỈ ĐẾM KHUÔN MẶT KHI CHÚNG THỰC SỰ MỚI (isNew = true)
             trackedFaces.forEach(face => {
-                this.uniqueFaces.add(face.id);
+                if (face.isNew && !this.uniqueFaces.has(face.id)) {
+                    console.log(`🎉 New unique face detected: ${face.id}`);
+                    this.uniqueFaces.add(face.id);
+                }
             });
 
-            this.totalFacesCount = Math.max(this.totalFacesCount, this.uniqueFaces.size);
+            this.totalFacesCount = this.uniqueFaces.size;
 
             if (this.onFaceCountUpdate) {
                 this.onFaceCountUpdate(currentFaceCount);
@@ -863,10 +927,16 @@ class ImprovedFaceTracker {
     constructor() {
         this.faces = new Map();
         this.nextId = 1;
-        this.maxFramesLost = 15; // Giảm từ 25 xuống 15
-        this.trackingThreshold = 0.4; // Tăng từ 0.1 lên 0.4
-        this.smoothingFactor = 0.4; // Tăng smoothing
+        this.maxFramesLost = 30; // Tăng lên để ổn định hơn
+        this.trackingThreshold = 0.4; // Tăng threshold để matching chính xác hơn
+        this.smoothingFactor = 0.7; // Tăng smoothing
         this.positionHistory = new Map();
+        this.velocityHistory = new Map();
+        this.maxHistorySize = 10;
+
+        // THÊM: Theo dõi khuôn mặt đã rời khỏi frame
+        this.departedFaces = new Map();
+        this.reappearanceThreshold = 0.6; // Ngưỡng để xác định reappearance
     }
 
     reset() {
@@ -885,11 +955,11 @@ class ImprovedFaceTracker {
         }
 
         const results = [];
+        const usedFaceIds = new Set();
 
         for (const currentFace of currentFaces) {
             console.log(`🔍 Processing face: conf=${currentFace.confidence}, size=${currentFace.width.toFixed(0)}x${currentFace.height.toFixed(0)}`);
 
-            // KIỂM TRA FACE HỢP LỆ TRƯỚC KHI XỬ LÝ
             if (!this.isValidFace(currentFace)) {
                 console.log(`🚫 Skipping invalid face`);
                 continue;
@@ -897,95 +967,212 @@ class ImprovedFaceTracker {
 
             let bestMatch = null;
             let bestScore = 0;
+            let bestMatchId = null;
 
+            // ƯU TIÊN MATCHING VỚI FACES ĐANG ACTIVE TRƯỚC
             for (const [id, knownFace] of this.faces.entries()) {
-                if (knownFace.seen) continue;
+                if (knownFace.seen || usedFaceIds.has(id)) continue;
 
-                const iouScore = this.calculateIoU(currentFace, knownFace);
-                const centerDistance = this.calculateDistance(currentFace, knownFace);
+                const predictedFace = this.predictPosition(knownFace);
+
+                const iouScore = this.calculateIoU(currentFace, predictedFace);
+                const centerDistance = this.calculateDistance(currentFace, predictedFace);
                 const sizeSimilarity = this.calculateSizeSimilarity(currentFace, knownFace);
 
                 const safeIou = isNaN(iouScore) ? 0 : iouScore;
                 const safeDistance = isNaN(centerDistance) ? 100 : centerDistance;
                 const safeSizeSimilarity = isNaN(sizeSimilarity) ? 0 : sizeSimilarity;
 
-                // ĐIỀU CHỈNH TRỌNG SỐ: Tăng importance của IoU
-                const totalScore = (safeIou * 0.7) + // Tăng từ 0.5 lên 0.7
-                    (Math.max(0, 1 - safeDistance / 60) * 0.2) + // Giảm từ 0.4 xuống 0.2
+                // TRỌNG SỐ CÂN BẰNG CHO MULTI-FACE TRACKING
+                const totalScore = (safeIou * 0.6) +
+                    (Math.max(0, 1 - safeDistance / 80) * 0.3) +
                     (safeSizeSimilarity * 0.1);
 
-                console.log(`🎯 Matching score: ${totalScore.toFixed(3)} (IoU: ${safeIou.toFixed(3)}, dist: ${safeDistance.toFixed(1)})`);
+                console.log(`🎯 Matching face ${id}: score=${totalScore.toFixed(3)} (IoU: ${safeIou.toFixed(3)}, dist: ${safeDistance.toFixed(1)})`);
 
-                if (totalScore > 0.5 && totalScore > bestScore) { // Tăng threshold từ 0.3 lên 0.5
+                if (totalScore > this.trackingThreshold && totalScore > bestScore) {
                     bestScore = totalScore;
                     bestMatch = knownFace;
+                    bestMatchId = id;
                 }
             }
 
             if (bestMatch) {
-                console.log(`✅ Matched with existing face ${bestMatch.id}`);
+                console.log(`✅ Matched with existing face ${bestMatchId}`);
 
+                this.updateVelocity(bestMatchId, bestMatch, currentFace);
                 this.updateFaceWithSmoothing(bestMatch, currentFace);
+
                 bestMatch.seen = true;
                 bestMatch.framesLost = 0;
                 bestMatch.isTracked = true;
                 bestMatch.confidence = currentFace.confidence;
                 bestMatch.lastSeen = Date.now();
 
+                usedFaceIds.add(bestMatchId);
+
                 results.push({
-                    id: bestMatch.id,
+                    id: bestMatchId,
                     isNew: false,
                     ...this.getSmoothedPosition(bestMatch)
                 });
             } else {
-                console.log(`🆕 Creating new face`);
-                const newFace = this.createNewFace(currentFace);
-                this.faces.set(newFace.id, newFace);
+                // THÊM: Kiểm tra xem có phải khuôn mặt cũ quay lại không
+                const reappearedFaceId = this.checkReappearance(currentFace);
+                if (reappearedFaceId) {
+                    console.log(`🔄 Face ${reappearedFaceId} reappeared`);
+                    const reappearedFace = this.departedFaces.get(reappearedFaceId);
 
-                this.positionHistory.set(newFace.id, [{
-                    x: currentFace.x,
-                    y: currentFace.y,
-                    width: currentFace.width,
-                    height: currentFace.height,
-                    timestamp: Date.now()
-                }]);
+                    this.faces.set(reappearedFaceId, reappearedFace);
+                    this.departedFaces.delete(reappearedFaceId);
 
-                results.push({
-                    id: newFace.id,
-                    isNew: true,
-                    ...currentFace
-                });
+                    this.updateFaceWithSmoothing(reappearedFace, currentFace);
+                    reappearedFace.seen = true;
+                    reappearedFace.framesLost = 0;
+                    reappearedFace.isTracked = true;
+                    reappearedFace.confidence = currentFace.confidence;
+                    reappearedFace.lastSeen = Date.now();
+
+                    results.push({
+                        id: reappearedFaceId,
+                        isNew: false,
+                        ...this.getSmoothedPosition(reappearedFace)
+                    });
+                } else {
+                    console.log(`🆕 Creating new face ${this.nextId}`);
+                    const newFace = this.createNewFace(currentFace);
+                    this.faces.set(newFace.id, newFace);
+
+                    this.positionHistory.set(newFace.id, [{
+                        x: currentFace.x,
+                        y: currentFace.y,
+                        width: currentFace.width,
+                        height: currentFace.height,
+                        timestamp: Date.now()
+                    }]);
+
+                    this.velocityHistory.set(newFace.id, { vx: 0, vy: 0, vw: 0, vh: 0 });
+
+                    results.push({
+                        id: newFace.id,
+                        isNew: true,
+                        ...currentFace
+                    });
+                }
             }
         }
 
-        // Dọn dẹp faces mất tích
-        this.cleanupLostFaces();
+        // XỬ LÝ FACES RỜI KHỎI FRAME
+        this.handleDepartedFaces();
 
         console.log(`📊 Tracker results: ${results.length} faces`);
         return results;
     }
 
+    // THÊM: Kiểm tra khuôn mặt cũ quay lại
+    checkReappearance(currentFace) {
+        for (const [id, departedFace] of this.departedFaces.entries()) {
+            const sizeSimilarity = this.calculateSizeSimilarity(currentFace, departedFace);
+            const centerDistance = this.calculateDistance(currentFace, departedFace);
+
+            // Điều kiện để xác định reappearance
+            const reappearanceScore = (sizeSimilarity * 0.7) +
+                (Math.max(0, 1 - centerDistance / 150) * 0.3);
+
+            if (reappearanceScore > this.reappearanceThreshold) {
+                return id;
+            }
+        }
+        return null;
+    }
+
+    // THÊM: Xử lý khuôn mặt rời khỏi frame
+    handleDepartedFaces() {
+        for (const [id, face] of this.faces.entries()) {
+            if (!face.seen && face.framesLost > this.maxFramesLost) {
+                console.log(`🚶 Face ${id} departed from frame`);
+
+                // Lưu vào departed faces trước khi xóa
+                this.departedFaces.set(id, { ...face });
+
+                // Xóa khỏi active tracking
+                this.faces.delete(id);
+                this.positionHistory.delete(id);
+                this.velocityHistory.delete(id);
+            }
+        }
+
+        // Giới hạn số lượng departed faces được lưu
+        if (this.departedFaces.size > 10) {
+            const firstKey = this.departedFaces.keys().next().value;
+            this.departedFaces.delete(firstKey);
+        }
+    }
+
+    predictPosition(face) {
+        const velocity = this.velocityHistory.get(face.id);
+        if (!velocity || (velocity.vx === 0 && velocity.vy === 0)) {
+            return face;
+        }
+
+        const framesLost = Math.min(face.framesLost, 5); // Giới hạn prediction
+        return {
+            x: face.x + velocity.vx * framesLost,
+            y: face.y + velocity.vy * framesLost,
+            width: face.width + velocity.vw * framesLost,
+            height: face.height + velocity.vh * framesLost
+        };
+    }
+
+    updateVelocity(faceId, oldFace, newFace) {
+        const history = this.positionHistory.get(faceId) || [];
+
+        if (history.length >= 2) {
+            const recentPoint = history[history.length - 1];
+            const timeDiff = (Date.now()) - recentPoint.timestamp;
+
+            if (timeDiff > 0) {
+                const dt = timeDiff / 1000;
+                const vx = (newFace.x - recentPoint.x) / dt;
+                const vy = (newFace.y - recentPoint.y) / dt;
+                const vw = (newFace.width - recentPoint.width) / dt;
+                const vh = (newFace.height - recentPoint.height) / dt;
+
+                const currentVelocity = this.velocityHistory.get(faceId) || { vx: 0, vy: 0, vw: 0, vh: 0 };
+                const smoothedVx = this.lerp(currentVelocity.vx, vx, 0.3);
+                const smoothedVy = this.lerp(currentVelocity.vy, vy, 0.3);
+                const smoothedVw = this.lerp(currentVelocity.vw, vw, 0.1);
+                const smoothedVh = this.lerp(currentVelocity.vh, vh, 0.1);
+
+                this.velocityHistory.set(faceId, {
+                    vx: smoothedVx,
+                    vy: smoothedVy,
+                    vw: smoothedVw,
+                    vh: smoothedVh
+                });
+            }
+        }
+    }
+
     updateFaceWithSmoothing(knownFace, currentFace) {
         const history = this.positionHistory.get(knownFace.id) || [];
+
         history.push({
-            x: currentFace.x,
-            y: currentFace.y,
-            width: currentFace.width,
-            height: currentFace.height,
+            ...currentFace,
             timestamp: Date.now()
         });
 
-        if (history.length > 5) {
+        if (history.length > this.maxHistorySize) {
             history.shift();
         }
         this.positionHistory.set(knownFace.id, history);
 
-        const smoothed = this.calculateMovingAverage(history);
+        const smoothed = this.calculateWeightedMovingAverage(history);
 
         knownFace.x = this.lerp(knownFace.x, smoothed.x, this.smoothingFactor);
         knownFace.y = this.lerp(knownFace.y, smoothed.y, this.smoothingFactor);
-        knownFace.width = this.lerp(knownFace.width, smoothed.width, this.smoothingFactor * 0.5);
-        knownFace.height = this.lerp(knownFace.height, smoothed.height, this.smoothingFactor * 0.5);
+        knownFace.width = this.lerp(knownFace.width, smoothed.width, this.smoothingFactor * 0.4);
+        knownFace.height = this.lerp(knownFace.height, smoothed.height, this.smoothingFactor * 0.4);
     }
 
     calculateMovingAverage(history) {
@@ -1004,6 +1191,30 @@ class ImprovedFaceTracker {
             y: sum.y / count,
             width: sum.width / count,
             height: sum.height / count
+        };
+    }
+
+    calculateWeightedMovingAverage(history) {
+        if (history.length === 0) return { x: 0, y: 0, width: 0, height: 0 };
+
+        let totalWeight = 0;
+        const sum = { x: 0, y: 0, width: 0, height: 0 };
+
+        for (let i = 0; i < history.length; i++) {
+            const weight = (i + 1) / history.length;
+            totalWeight += weight;
+
+            sum.x += history[i].x * weight;
+            sum.y += history[i].y * weight;
+            sum.width += history[i].width * weight;
+            sum.height += history[i].height * weight;
+        }
+
+        return {
+            x: sum.x / totalWeight,
+            y: sum.y / totalWeight,
+            width: sum.width / totalWeight,
+            height: sum.height / totalWeight
         };
     }
 
