@@ -237,7 +237,12 @@ class FaceDetectionApp {
 
     async stopTracking() {
         try {
+            console.log('⏸️ Stopping tracking in app...');
+
+            // Dừng tracking trong faceDetector (vẫn giữ camera chạy)
             this.faceDetector.stopTracking();
+
+            // Dừng recording video
             const videoData = await this.videoManager.stopRecording();
             console.log('✅ Video recording stopped:', videoData);
 
@@ -248,9 +253,14 @@ class FaceDetectionApp {
                 await this.saveSessionData({ filename: null });
                 console.log('⚠️ Session data saved without video');
             }
+
+            // HIỂN THỊ THÔNG BÁO
+            this.showNotification('⏸️ Đã dừng thống kê. Camera vẫn đang chạy.', 'info');
+
         } catch (error) {
             console.error('❌ Error stopping tracking/recording:', error);
             await this.saveSessionData({ filename: null });
+            this.showNotification('❌ Lỗi khi dừng thống kê', 'error');
         }
     }
 

@@ -96,21 +96,26 @@ class FaceDetector {
             console.log(`✅ Formatted faces: ${formattedFaces.length}`);
 
             if (formattedFaces.length > 0) {
-                // SỬA: SỬ DỤNG FORMATTED FACES CHO TRACKER VÀ VẼ
+                // SỬA: LUÔN CẬP NHẬT TRACKER ĐỂ HIỂN THỊ KHUÔN MẶT
                 const trackedFaces = this.faceTracker.update(formattedFaces);
 
-                // SỬA: TRUYỀN FORMATTED FACES (ĐÃ CÓ PIXEL COORDINATES) THAY VÌ DETECTIONS GỐC
+                // SỬA: LUÔN VẼ KHUÔN MẶT DÙ CÓ TRACKING HAY KHÔNG
                 this.drawMediaPipeDetections(formattedFaces, trackedFaces);
 
-                // 3. Cập nhật thống kê
+                // 3. Chỉ cập nhật thống kê khi đang tracking
                 if (this.isTracking) {
                     this.updateTrackingStats(trackedFaces);
+                } else {
+                    // KHI KHÔNG TRACKING, VẪN HIỂN THỊ SỐ KHUÔN MẶT HIỆN TẠI
+                    if (this.onFaceCountUpdate) {
+                        this.onFaceCountUpdate(trackedFaces.length);
+                    }
                 }
             } else {
                 this.drawNoFacesInfo();
 
                 // Cập nhật 0 faces khi không có detection
-                if (this.isTracking && this.onFaceCountUpdate) {
+                if (this.onFaceCountUpdate) {
                     this.onFaceCountUpdate(0);
                 }
             }
@@ -684,11 +689,20 @@ class FaceDetector {
         this.ctx.fillStyle = '#ffffff';
         this.ctx.font = 'bold 16px Arial';
         this.ctx.textAlign = 'center';
-        this.ctx.fillText('🔍 Đang tìm khuôn mặt...', this.canvas.width / 2, 30);
 
-        // Thêm thông tin debug
-        this.ctx.font = '12px Arial';
-        this.ctx.fillText('Camera đang hoạt động - Chờ phát hiện khuôn mặt', this.canvas.width / 2, 50);
+        if (this.isTracking) {
+            this.ctx.fillText('🔍 Đang tìm khuôn mặt...', this.canvas.width / 2, 30);
+            this.ctx.font = '12px Arial';
+            this.ctx.fillText('Camera đang hoạt động - Chờ phát hiện khuôn mặt', this.canvas.width / 2, 50);
+        } else if (this.stream) {
+            this.ctx.fillText('📷 Camera đang chạy', this.canvas.width / 2, 30);
+            this.ctx.font = '12px Arial';
+            this.ctx.fillText('Nhấn "Bắt đầu Theo dõi" để thống kê khuôn mặt', this.canvas.width / 2, 50);
+        } else {
+            this.ctx.fillText('📷 Camera đã tắt', this.canvas.width / 2, 30);
+            this.ctx.font = '12px Arial';
+            this.ctx.fillText('Nhấn "Bật Camera" để bắt đầu', this.canvas.width / 2, 50);
+        }
     }
 
     drawStatusInfo() {
@@ -704,11 +718,17 @@ class FaceDetector {
             this.ctx.font = '12px Arial';
             this.ctx.fillText(`Tổng: ${this.totalFacesCount}`, 20, 50);
             this.ctx.fillText(`Hiện tại: ${this.faceTracker.getTrackedFacesCount()}`, 20, 70);
-        } else {
+        } else if (this.stream) {
+            // TRẠNG THÁI MỚI: Camera đang chạy nhưng không tracking
             this.ctx.fillText('📷 Camera (MediaPipe)', 20, 30);
             this.ctx.font = '12px Arial';
             this.ctx.fillText(`Khuôn mặt: ${this.faceTracker.getTrackedFacesCount()}`, 20, 50);
-            this.ctx.fillText('⏸️ Tạm dừng thống kê', 20, 70);
+            this.ctx.fillText('⏸️ Sẵn sàng thống kê', 20, 70);
+        } else {
+            this.ctx.fillText('📷 Camera (MediaPipe)', 20, 30);
+            this.ctx.font = '12px Arial';
+            this.ctx.fillText('🛑 Camera đã tắt', 20, 50);
+            this.ctx.fillText('Nhấn "Bật Camera"', 20, 70);
         }
     }
 
@@ -796,6 +816,8 @@ class FaceDetector {
     stopTracking() {
         if (!this.isTracking) return;
 
+        console.log('⏸️ Stopping face tracking (but keeping camera running)...');
+
         this.isTracking = false;
 
         const recordingStatus = document.getElementById('recordingStatus');
@@ -808,12 +830,19 @@ class FaceDetector {
             this.timeInterval = null;
         }
 
+        // CHỈ reset tracking stats, không reset camera
         if (this.onFaceCountUpdate) this.onFaceCountUpdate(0);
         if (this.onTotalFacesUpdate) this.onTotalFacesUpdate(0);
         if (this.onTrackingTimeUpdate) this.onTrackingTimeUpdate(0);
 
+        // KHÔNG reset uniqueFaces và totalFacesCount nếu muốn giữ lại lịch sử
+        // this.uniqueFaces.clear();
+        // this.totalFacesCount = 0;
+
         this.updateButtonStates();
-        console.log('⏸️ Face tracking stopped');
+
+        // VẪN HIỂN THỊ CAMERA VÀ PHÁT HIỆN KHUÔN MẶT
+        console.log('✅ Face tracking stopped, camera continues running');
     }
 
     updateButtonStates() {
@@ -837,9 +866,11 @@ class FaceDetector {
                         button.disabled = !hasCamera;
                         break;
                     case 'startTracking':
+                        // Có thể bắt đầu tracking nếu camera đang chạy và chưa tracking
                         button.disabled = !hasCamera || isTracking;
                         break;
                     case 'stopTracking':
+                        // Có thể dừng tracking nếu đang tracking
                         button.disabled = !hasCamera || !isTracking;
                         break;
                 }
@@ -848,7 +879,7 @@ class FaceDetector {
     }
 
     stopCamera() {
-        console.log('🛑 Stopping camera...');
+        console.log('🛑 Stopping camera completely...');
         this.isDetectionRunning = false;
 
         if (this.faceDetection) {
@@ -871,6 +902,7 @@ class FaceDetector {
             this.video.remove();
         }
 
+        // Dừng tracking nếu đang chạy
         if (this.isTracking) {
             this.stopTracking();
         }
@@ -878,6 +910,14 @@ class FaceDetector {
         if (this.ctx) {
             this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
             this.ctx.setTransform(1, 0, 0, 1, 0, 0);
+
+            // Hiển thị thông báo khi camera tắt
+            this.ctx.fillStyle = '#ffffff';
+            this.ctx.font = 'bold 16px Arial';
+            this.ctx.textAlign = 'center';
+            this.ctx.fillText('📷 Camera đã tắt', this.canvas.width / 2, this.canvas.height / 2);
+            this.ctx.font = '14px Arial';
+            this.ctx.fillText('Nhấn "Bật Camera" để bắt đầu', this.canvas.width / 2, this.canvas.height / 2 + 30);
         }
 
         this.isCameraOn = false;
