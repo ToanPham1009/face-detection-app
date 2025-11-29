@@ -122,7 +122,7 @@ class FaceDetector {
 
         try {
             this.ctx.save();
-            this.drawVideoFrame();
+            this.drawVideoFrame(); // Vẽ video đã flip
 
             const detections = results.detections || [];
             console.log(`🎯 MediaPipe detected: ${detections.length} faces`);
@@ -144,13 +144,13 @@ class FaceDetector {
                     }
                 }
             } else {
-                this.drawNoFacesInfo();
+                this.drawNoFacesInfo(); // Vẽ text không flip
                 if (this.onFaceCountUpdate) {
                     this.onFaceCountUpdate(0);
                 }
             }
 
-            this.drawStatusInfo();
+            this.drawStatusInfo(); // Vẽ text không flip
             this.ctx.restore();
 
         } catch (error) {
@@ -310,17 +310,18 @@ class FaceDetector {
                     widthPx = bbox.width * this.canvas.width;
                     heightPx = bbox.height * this.canvas.height;
 
+                    // SỬA: Không flip tọa độ X nữa, để MediaPipe tự xử lý
                     const originalStartX = (bbox.xCenter - bbox.width / 2) * this.canvas.width;
                     const originalStartY = (bbox.yCenter - bbox.height / 2) * this.canvas.height;
 
-                    startXPx = this.canvas.width - originalStartX - widthPx;
+                    startXPx = originalStartX; // KHÔNG flip
                     startYPx = originalStartY;
 
                 } else if (bbox.originX !== undefined && bbox.originY !== undefined) {
                     widthPx = bbox.width * this.canvas.width;
                     heightPx = bbox.height * this.canvas.height;
 
-                    startXPx = this.canvas.width - (bbox.originX * this.canvas.width) - widthPx;
+                    startXPx = bbox.originX * this.canvas.width; // KHÔNG flip
                     startYPx = bbox.originY * this.canvas.height;
                 } else {
                     return null;
@@ -468,7 +469,10 @@ class FaceDetector {
 
     drawBoundingBox(start, size, trackedFace, confidence) {
         this.ctx.save();
-        this.ctx.setTransform(1, 0, 0, 1, 0, 0); // Reset transform
+
+        // Áp dụng cùng transform với video (flip ngang)
+        this.ctx.translate(this.canvas.width, 0);
+        this.ctx.scale(-1, 1);
 
         let boxColor, textColor;
 
@@ -491,9 +495,10 @@ class FaceDetector {
         this.ctx.shadowBlur = 8;
         this.ctx.shadowColor = boxColor;
 
+        // Vẽ bounding box - tọa độ đã được tính toán đúng
         this.ctx.strokeRect(start[0], start[1], size[0], size[1]);
 
-        // Vẽ ID khuôn mặt
+        // Vẽ ID khuôn mặt - TEXT cũng được flip nên sẽ hiển thị đúng
         this.ctx.fillStyle = textColor;
         this.ctx.font = 'bold 12px Arial';
 
@@ -504,20 +509,22 @@ class FaceDetector {
         this.ctx.fillText(infoText, start[0], start[1] - 8);
 
         this.ctx.restore();
-        // XÓA: Không dùng transform flip
     }
 
     drawLandmarks(landmarks) {
         if (!landmarks || landmarks.length < 6) return;
 
         this.ctx.save();
-        this.ctx.setTransform(1, 0, 0, 1, 0, 0); // Reset transform
+
+        // Áp dụng cùng transform với video
+        this.ctx.translate(this.canvas.width, 0);
+        this.ctx.scale(-1, 1);
 
         this.ctx.fillStyle = '#00ff00';
         this.ctx.strokeStyle = '#00ff00';
         this.ctx.lineWidth = 1.5;
 
-        // Vẽ các điểm landmarks - KHÔNG FLIP
+        // Vẽ các điểm landmarks - KHÔNG cần flip vì đã áp dụng transform
         landmarks.forEach((landmark) => {
             const x = landmark.x * this.canvas.width;
             const y = landmark.y * this.canvas.height;
@@ -842,7 +849,7 @@ class FaceDetector {
 
     drawNoFacesInfo() {
         this.ctx.save();
-        this.ctx.setTransform(1, 0, 0, 1, 0, 0); // Reset transform
+        this.ctx.setTransform(1, 0, 0, 1, 0, 0); // KHÔNG flip cho text
 
         this.ctx.fillStyle = '#ffffff';
         this.ctx.font = 'bold 16px Arial';
@@ -867,7 +874,7 @@ class FaceDetector {
 
     drawStatusInfo() {
         this.ctx.save();
-        this.ctx.setTransform(1, 0, 0, 1, 0, 0); // Reset transform
+        this.ctx.setTransform(1, 0, 0, 1, 0, 0); // KHÔNG flip cho text
 
         this.ctx.fillStyle = 'rgba(0, 0, 0, 0.6)';
         this.ctx.fillRect(10, 10, 250, 80);
@@ -894,7 +901,6 @@ class FaceDetector {
         }
 
         this.ctx.restore();
-        // XÓA: Không dùng transform ở đây nữa
     }
 
     initializeCanvas() {
@@ -907,7 +913,7 @@ class FaceDetector {
             this.canvas.width = this.video.videoWidth;
             this.canvas.height = this.video.videoHeight;
 
-            // SỬA: Chỉ reset transform, không flip canvas
+            // Reset transform - video sẽ được flip khi vẽ frame
             this.ctx.setTransform(1, 0, 0, 1, 0, 0);
 
             this.canvasInitialized = true;
@@ -934,7 +940,10 @@ class FaceDetector {
             this.ctx.fillStyle = '#000000';
             this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
 
-            // SỬA: Xóa transform cũ và vẽ video bình thường
+            // FLIP video để hiển thị giống gương (mirror effect)
+            this.ctx.translate(this.canvas.width, 0);
+            this.ctx.scale(-1, 1);
+
             this.ctx.drawImage(
                 this.video,
                 0, 0,
