@@ -9,6 +9,10 @@ class FaceDetector {
         this.isModelLoading = false;
         this.modelsLoaded = false;
 
+        // QUAN TRỌNG: ĐẢM BẢO faceTracker được khởi tạo
+        this.faceTracker = new ImprovedFaceTracker();
+        console.log('🎯 FaceTracker initialized');
+
         // Camera and Tracking State
         this.stream = null;
         this.isTracking = false;
@@ -16,7 +20,6 @@ class FaceDetector {
         this.sessionId = null;
         this.startTime = null;
         this.totalFacesCount = 0;
-        this.faceTracker = new ImprovedFaceTracker();
 
         // Thêm dòng này - khai báo uniqueFaces
         this.uniqueFaces = new Map(); // ← THÊM DÒNG NÀY
@@ -138,6 +141,12 @@ class FaceDetector {
             if (formattedFaces.length > 0) {
                 // Tạo simple embeddings từ các đặc điểm khuôn mặt
                 this.createFaceEmbeddings(formattedFaces);
+
+                // SAFE CHECK: Đảm bảo faceTracker tồn tại
+                if (!this.faceTracker) {
+                    console.error('❌ faceTracker not available for tracking');
+                    return;
+                }
 
                 const trackedFaces = this.faceTracker.update(formattedFaces);
                 this.drawFaceDetections(formattedFaces, trackedFaces);
@@ -995,6 +1004,12 @@ class FaceDetector {
             return;
         }
 
+        // ĐẢM BẢO faceTracker tồn tại
+        if (!this.faceTracker) {
+            console.error('❌ faceTracker not initialized, creating new one');
+            this.faceTracker = new ImprovedFaceTracker();
+        }
+
         // RESET HOÀN TOÀN trước khi bắt đầu
         this.faceTracker.resetCompletely();
 
@@ -1174,14 +1189,21 @@ class FaceDetector {
     }
 
     // SỬA updateTrackingStats để debug
+    // SỬA PHƯƠNG THỨC updateTrackingStats
     updateTrackingStats(trackedFaces) {
         if (!this.isTracking) return;
 
         try {
             const currentFaceCount = trackedFaces.length;
 
+            // DEBUG: Kiểm tra faceTracker tồn tại
+            if (!this.faceTracker) {
+                console.error('❌ faceTracker is undefined!');
+                return;
+            }
+
             // DEBUG: Log face appearances map
-            console.log('🔍 FaceAppearances Map:', Array.from(this.faceAppearances.entries()));
+            console.log('🔍 FaceAppearances Map:', Array.from(this.faceTracker.faceAppearances.entries()));
 
             let newAppearances = 0;
             trackedFaces.forEach(face => {
