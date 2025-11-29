@@ -205,7 +205,8 @@ class FaceDetectionApp {
             'stopCamera': () => this.faceDetector.stopCamera(), // Gọi từ faceDetector
             'startTracking': () => this.startTracking(),
             'stopTracking': () => this.stopTracking(),
-            'debugButton': () => this.faceDetector.debugVideoState()
+            'debugButton': () => this.faceDetector.debugVideoState(),
+            'refreshDisplay': () => this.faceDetector.ensureVideoDisplay()
         };
 
         for (const [id, handler] of Object.entries(elements)) {
@@ -265,15 +266,13 @@ class FaceDetectionApp {
                 console.log('⚠️ Session data saved without video');
             }
 
-            // QUAN TRỌNG: Đảm bảo camera vẫn chạy và hiển thị
-            if (this.faceDetector.isCameraOn) {
-                // Đợi một chút để đảm bảo tracking đã dừng hoàn toàn
-                setTimeout(() => {
-                    this.faceDetector.drawVideoFrame();
-                    this.faceDetector.drawStatusInfo();
-                    console.log('🔄 Camera display restored after stopping tracking');
-                }, 200);
-            }
+            // QUAN TRỌNG: Đảm bảo camera vẫn hiển thị
+            setTimeout(() => {
+                if (this.faceDetector.isCameraOn) {
+                    this.faceDetector.ensureVideoDisplay();
+                    console.log('🔄 Camera display verified after stopping tracking');
+                }
+            }, 300);
 
             // HIỂN THỊ THÔNG BÁO
             this.showNotification('⏸️ Đã dừng thống kê. Camera vẫn đang chạy.', 'info');
@@ -282,6 +281,11 @@ class FaceDetectionApp {
             console.error('❌ Error stopping tracking/recording:', error);
             await this.saveSessionData({ filename: null });
             this.showNotification('❌ Lỗi khi dừng thống kê', 'error');
+
+            // Vẫn đảm bảo camera hiển thị ngay cả khi có lỗi
+            if (this.faceDetector.isCameraOn) {
+                this.faceDetector.ensureVideoDisplay();
+            }
         }
     }
 

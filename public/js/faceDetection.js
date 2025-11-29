@@ -118,14 +118,20 @@ class FaceDetector {
     }
 
     handleMediaPipeResults(results) {
+        // QUAN TRỌNG: Luôn xử lý kết quả ngay cả khi không tracking
+        // để duy trì video display
         if (!this.isDetectionRunning) return;
 
         try {
             this.ctx.save();
-            this.drawVideoFrame(); // Vẽ video đã flip
+            this.drawVideoFrame(); // Luôn vẽ video frame
 
             const detections = results.detections || [];
-            console.log(`🎯 MediaPipe detected: ${detections.length} faces`);
+
+            // Chỉ log khi có tracking hoặc debug
+            if (this.isTracking && detections.length > 0) {
+                console.log(`🎯 MediaPipe detected: ${detections.length} faces`);
+            }
 
             const formattedFaces = this.formatDetections(detections);
 
@@ -139,23 +145,29 @@ class FaceDetector {
                 if (this.isTracking) {
                     this.updateTrackingStats(trackedFaces);
                 } else {
+                    // Vẫn cập nhật số khuôn mặt hiện tại ngay cả khi không tracking
                     if (this.onFaceCountUpdate) {
                         this.onFaceCountUpdate(trackedFaces.length);
                     }
                 }
             } else {
-                this.drawNoFacesInfo(); // Vẽ text không flip
+                this.drawNoFacesInfo();
                 if (this.onFaceCountUpdate) {
                     this.onFaceCountUpdate(0);
                 }
             }
 
-            this.drawStatusInfo(); // Vẽ text không flip
+            this.drawStatusInfo();
             this.ctx.restore();
 
         } catch (error) {
             console.error('❌ Error handling MediaPipe results:', error);
             this.ctx.restore();
+
+            // Vẽ lại video frame nếu có lỗi
+            if (this.isCameraOn) {
+                this.drawVideoFrame();
+            }
         }
     }
 
@@ -722,6 +734,7 @@ class FaceDetector {
         console.log('🔄 Starting MediaPipe detection loop...');
 
         const detectionLoop = async (timestamp) => {
+            // QUAN TRỌNG: Luôn chạy khi camera đang bật, không phụ thuộc vào tracking
             if (!this.isCameraOn || !this.isDetectionRunning) {
                 this.isDetectionRunning = false;
                 return;
@@ -738,9 +751,14 @@ class FaceDetector {
                     await this.detectWithMediaPipe();
                 } catch (error) {
                     console.error('❌ Error in MediaPipe detection:', error);
+                    // Vẽ lại video frame nếu có lỗi detection
+                    if (this.isCameraOn) {
+                        this.drawVideoFrame();
+                    }
                 }
             }
 
+            // QUAN TRỌNG: Luôn tiếp tục loop khi camera đang bật
             if (this.isCameraOn && this.isDetectionRunning) {
                 requestAnimationFrame(detectionLoop);
             } else {
@@ -749,6 +767,23 @@ class FaceDetector {
         };
 
         requestAnimationFrame(detectionLoop);
+    }
+
+    // Thêm vào class FaceDetector
+    ensureVideoDisplay() {
+        if (!this.isCameraOn) return;
+
+        console.log('🔄 Ensuring video display...');
+
+        // Force redraw
+        this.drawVideoFrame();
+        this.drawStatusInfo();
+
+        // Kiểm tra và khởi động lại detection loop nếu cần
+        if (!this.isDetectionRunning) {
+            console.log('🔄 Restarting detection loop...');
+            this.startDetectionLoop();
+        }
     }
 
     async detectWithMediaPipe() {
@@ -1012,7 +1047,10 @@ class FaceDetector {
             this.timeInterval = null;
         }
 
-        // KHÔNG xóa uniqueFaces ở đây - chỉ reset tracking state
+        // KHÔNG reset totalFacesCount - giữ lại số đã đếm
+        // this.totalFacesCount = 0;
+
+        // KHÔNG xóa uniqueFaces
         // if (this.uniqueFaces) {
         //     this.uniqueFaces.clear();
         // }
@@ -1021,7 +1059,12 @@ class FaceDetector {
         if (this.onTotalFacesUpdate) this.onTotalFacesUpdate(this.totalFacesCount); // Giữ tổng số
         if (this.onTrackingTimeUpdate) this.onTrackingTimeUpdate(0);
 
-        // QUAN TRỌNG: Vẽ lại video frame để tránh màn hình đen
+        // QUAN TRỌNG: Đảm bảo detection loop vẫn chạy
+        if (this.isCameraOn && !this.isDetectionRunning) {
+            this.startDetectionLoop();
+        }
+
+        // Vẽ lại video frame ngay lập tức
         if (this.isCameraOn) {
             this.drawVideoFrame();
             this.drawStatusInfo();
@@ -1388,6 +1431,7 @@ class ImprovedFaceTracker {
         if (!wasInFrame) {
             // Khuôn mặt vừa mới vào khung hình
             this.faceInFrameStatus.set(faceSignature, true);
+            console.log(`🎯 Face ${faceSignature} ENTERED frame`);
             return true;
         }
 
@@ -1543,12 +1587,18 @@ class ImprovedFaceTracker {
         return norm1 === 0 || norm2 === 0 ? 0 : dotProduct / (norm1 * norm2);
     }
 
-    registerFaceSignature(face) {
+    registerFaceSignatureregisterFaceSignature(face) {
         if (!face.embedding) return null;
 
         const signature = this.getFaceSignature(face);
-        if (signature && !this.faceAppearances.has(signature)) {
-            this.faceAppearances.set(signature, 0); // Khởi tạo count = 0
+        if (signature) {
+            // Chỉ tạo mới nếu chưa tồn tại
+            if (!this.faceAppearances.has(signature)) {
+                this.faceAppearances.set(signature, 0); // Khởi tạo count = 0
+                console.log(`📝 Registered new face signature: ${signature}`);
+            }
+            // Luôn cập nhật trạng thái vào khung hình
+            this.faceInFrameStatus.set(signature, true);
         }
         return signature;
     }
@@ -1560,7 +1610,11 @@ class ImprovedFaceTracker {
         if (signature && this.faceAppearances.has(signature)) {
             const currentCount = this.faceAppearances.get(signature);
             this.faceAppearances.set(signature, currentCount + 1);
-            console.log(`📈 Face ${face.id} appearance count: ${currentCount + 1} (entered frame)`);
+            console.log(`📈 Face ${face.id} appearance count: ${currentCount + 1}`);
+        } else if (signature) {
+            // Nếu chưa có trong faceAppearances, tạo mới với count = 1
+            this.faceAppearances.set(signature, 1);
+            console.log(`📈 Face ${face.id} FIRST appearance count: 1`);
         }
     }
 
