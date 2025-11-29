@@ -995,6 +995,10 @@ class FaceDetector {
             return;
         }
 
+        // RESET HOÀN TOÀN trước khi bắt đầu
+        this.faceTracker.resetCompletely();
+
+
         this.isTracking = true;
         this.sessionId = Date.now().toString();
         this.startTime = Date.now();
@@ -1169,23 +1173,29 @@ class FaceDetector {
         console.log('✅ Callbacks set');
     }
 
+    // SỬA updateTrackingStats để debug
     updateTrackingStats(trackedFaces) {
         if (!this.isTracking) return;
 
         try {
             const currentFaceCount = trackedFaces.length;
 
-            // Đếm số lượt xuất hiện mới
+            // DEBUG: Log face appearances map
+            console.log('🔍 FaceAppearances Map:', Array.from(this.faceAppearances.entries()));
+
             let newAppearances = 0;
             trackedFaces.forEach(face => {
                 if (face.isNew) {
                     newAppearances++;
-                    console.log(`🎉 NEW APPEARANCE: face ${face.id}`);
+                    console.log(`🎉 TRULY NEW APPEARANCE: face ${face.id}`);
                 }
             });
 
             // Lấy tổng số lượt xuất hiện từ tracker
             this.totalFacesCount = this.faceTracker.getTotalAppearances();
+
+            // DEBUG: Verify total count
+            console.log(`🔢 Total faces count: ${this.totalFacesCount}`);
 
             if (this.onFaceCountUpdate) {
                 this.onFaceCountUpdate(currentFaceCount);
@@ -1430,15 +1440,19 @@ class ImprovedFaceTracker {
                     }
 
                 } else {
-                    // Tạo face mới thực sự - đây chắc chắn là vào khung hình
+                    // Tạo face mới thực sự
                     const newFace = this.createNewFace(currentFace);
                     this.faces.set(newFace.id, newFace);
 
                     // Đăng ký face signature và đánh dấu là vào khung hình
-                    const faceSignature = this.registerFaceSignature(newFace); // SỬA DÒNG NÀY
+                    const faceSignature = this.registerFaceSignature(newFace);
+
+                    // QUAN TRỌNG: Luôn tăng count cho face mới (không check time)
                     if (faceSignature) {
-                        this.incrementAppearanceCount(newFace);
-                        console.log(`🎉 Face ${newFace.id} FIRST APPEARANCE - COUNT: 1`);
+                        const currentCount = this.faceAppearances.get(faceSignature) || 0;
+                        this.faceAppearances.set(faceSignature, currentCount + 1);
+                        this.lastAppearanceTime.set(faceSignature, Date.now());
+                        console.log(`🎉 Face ${newFace.id} FIRST APPEARANCE - COUNT: ${currentCount + 1}`);
                     }
 
                     results.push({
@@ -1508,23 +1522,36 @@ class ImprovedFaceTracker {
     }
 
     // SỬA PHƯƠNG THỨC NÀY
+    // SỬA PHƯƠNG THỨC incrementAppearanceCount
     incrementAppearanceCount(face) {
-        if (!face.embedding) return;
+        if (!face.embedding) {
+            console.log('❌ No embedding for face, cannot count');
+            return;
+        }
 
         const signature = this.getFaceSignature(face);
-        if (signature) {
-            const currentTime = Date.now();
-            const lastTime = this.lastAppearanceTime.get(signature) || 0;
+        if (!signature) {
+            console.log('❌ No signature for face, cannot count');
+            return;
+        }
 
-            // CHỈ tăng count nếu đã qua đủ thời gian
-            if (currentTime - lastTime >= this.minReappearanceDelay) {
-                const currentCount = this.faceAppearances.get(signature) || 0;
-                this.faceAppearances.set(signature, currentCount + 1);
-                this.lastAppearanceTime.set(signature, currentTime);
-                console.log(`📈 Face ${face.id} appearance count: ${currentCount + 1} (after ${currentTime - lastTime}ms)`);
-            } else {
-                console.log(`⏸️ Face ${face.id} skipped - too soon: ${currentTime - lastTime}ms`);
-            }
+        const currentTime = Date.now();
+        const lastTime = this.lastAppearanceTime.get(signature) || 0;
+
+        // DEBUG: Log timing info
+        console.log(`⏰ Face timing: current=${currentTime}, last=${lastTime}, diff=${currentTime - lastTime}`);
+
+        // CHỈ tăng count nếu đã qua đủ thời gian (3 giây)
+        if (currentTime - lastTime >= this.minReappearanceDelay) {
+            const currentCount = this.faceAppearances.get(signature) || 0;
+            const newCount = currentCount + 1;
+            this.faceAppearances.set(signature, newCount);
+            this.lastAppearanceTime.set(signature, currentTime);
+            console.log(`✅ 📈 Face ${face.id} appearance count: ${newCount} (after ${currentTime - lastTime}ms)`);
+            return true; // Đếm thành công
+        } else {
+            console.log(`⏸️ Face ${face.id} skipped - too soon: ${currentTime - lastTime}ms`);
+            return false; // Không đếm
         }
     }
 
@@ -1544,6 +1571,7 @@ class ImprovedFaceTracker {
         for (const count of this.faceAppearances.values()) {
             total += count;
         }
+        console.log(`🔢 getTotalAppearances: ${total} from ${this.faceAppearances.size} signatures`);
         return total;
     }
 
@@ -1898,5 +1926,18 @@ class ImprovedFaceTracker {
 
         console.log('- Signature distribution:', signatureCounts);
         console.log('- Face appearances:', Array.from(this.faceAppearances.entries()));
+    }
+
+    // THÊM VÀO ImprovedFaceTracker
+    resetCompletely() {
+        this.faces.clear();
+        this.nextId = 1;
+        this.positionHistory.clear();
+        this.faceAppearances.clear();
+        this.departedFaces.clear();
+        this.activeFaces.clear();
+        this.faceInFrameStatus.clear();
+        this.lastAppearanceTime.clear();
+        console.log('🔄 Face tracker reset completely');
     }
 }
