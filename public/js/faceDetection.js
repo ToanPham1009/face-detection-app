@@ -1264,6 +1264,8 @@ class ImprovedFaceTracker {
 
         // Thêm biến để theo dõi trạng thái
         this.faceInFrameStatus = new Map(); // faceSignature -> boolean (đang trong khung hình hay không)
+        this.lastAppearanceTime = new Map(); // ← THÊM DÒNG NÀY
+        this.minReappearanceDelay = 3000; // ← THÊM: 3 giây giữa các lần đếm
     }
 
     reset() {
@@ -1465,19 +1467,31 @@ class ImprovedFaceTracker {
     }
 
     // PHƯƠNG THỨC MỚI: Kiểm tra và cập nhật trạng thái vào khung hình
+    // TRONG ImprovedFaceTracker class - SỬA PHƯƠNG THỨC NÀY
     checkAndUpdateFrameEntry(faceSignature) {
         if (!faceSignature) return false;
 
         const wasInFrame = this.faceInFrameStatus.get(faceSignature) || false;
+        const currentTime = Date.now();
 
         if (!wasInFrame) {
-            // Khuôn mặt vừa mới vào khung hình
-            this.faceInFrameStatus.set(faceSignature, true);
-            console.log(`🎯 Face ${faceSignature} ENTERED frame`);
-            return true;
+            // Kiểm tra thời gian tối thiểu giữa các lần xuất hiện (ít nhất 2 giây)
+            const lastAppearanceTime = this.lastAppearanceTime.get(faceSignature) || 0;
+            const timeSinceLastAppearance = currentTime - lastAppearanceTime;
+
+            // CHỈ tính là xuất hiện mới nếu đã qua ít nhất 2-3 giây
+            if (timeSinceLastAppearance > 2000) { // 2000ms = 2 giây
+                this.faceInFrameStatus.set(faceSignature, true);
+                this.lastAppearanceTime.set(faceSignature, currentTime);
+                console.log(`🎯 Face ${faceSignature} ENTERED frame after ${timeSinceLastAppearance}ms`);
+                return true;
+            } else {
+                // Vẫn đánh dấu là trong frame nhưng không tính là xuất hiện mới
+                this.faceInFrameStatus.set(faceSignature, true);
+                return false;
+            }
         }
 
-        // Đã ở trong khung hình trước đó - không tính là mới
         return false;
     }
 
@@ -1493,19 +1507,23 @@ class ImprovedFaceTracker {
         }
     }
 
+    // SỬA PHƯƠNG THỨC NÀY
     incrementAppearanceCount(face) {
         if (!face.embedding) return;
 
         const signature = this.getFaceSignature(face);
         if (signature) {
-            if (this.faceAppearances.has(signature)) {
-                const currentCount = this.faceAppearances.get(signature);
+            const currentTime = Date.now();
+            const lastTime = this.lastAppearanceTime.get(signature) || 0;
+
+            // CHỈ tăng count nếu đã qua đủ thời gian
+            if (currentTime - lastTime >= this.minReappearanceDelay) {
+                const currentCount = this.faceAppearances.get(signature) || 0;
                 this.faceAppearances.set(signature, currentCount + 1);
-                console.log(`📈 Face ${face.id} appearance count: ${currentCount + 1}`);
+                this.lastAppearanceTime.set(signature, currentTime);
+                console.log(`📈 Face ${face.id} appearance count: ${currentCount + 1} (after ${currentTime - lastTime}ms)`);
             } else {
-                // Nếu chưa có trong faceAppearances, tạo mới với count = 1
-                this.faceAppearances.set(signature, 1);
-                console.log(`📈 Face ${face.id} FIRST appearance count: 1`);
+                console.log(`⏸️ Face ${face.id} skipped - too soon: ${currentTime - lastTime}ms`);
             }
         }
     }
