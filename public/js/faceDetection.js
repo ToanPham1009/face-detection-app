@@ -1380,42 +1380,51 @@ class ImprovedFaceTracker {
                 }
 
             } else {
-                // Không tìm thấy match - kiểm tra reappearance hoặc tạo mới
-                const reappearedFace = this.checkFaceReappearance(currentFace);
+                // Thử fallback matching nếu không tìm thấy match chính
+                const fallbackMatch = this.findFallbackMatch(currentFace);
 
-                if (reappearedFace) {
-                    // Face reappeared - count as new appearance
-                    this.updateFaceWithSmoothing(reappearedFace, currentFace);
-                    reappearedFace.seen = true;
-                    reappearedFace.framesLost = 0;
-                    reappearedFace.isTracked = true;
-                    reappearedFace.confidence = currentFace.confidence;
-                    reappearedFace.lastSeen = Date.now();
+                if (fallbackMatch && fallbackMatch.distance < 50) {
+                    console.log(`🔄 Using fallback match for face ${fallbackMatch.id}, distance: ${fallbackMatch.distance.toFixed(1)}`);
+                    bestMatch = fallbackMatch.face;
+                    bestMatchId = fallbackMatch.id;
 
-                    // Update embedding
-                    if (currentFace.embedding) {
-                        reappearedFace.embedding = currentFace.embedding;
+                    // Update existing face với fallback
+                    this.updateFaceWithSmoothing(bestMatch, currentFace);
+                    bestMatch.seen = true;
+                    bestMatch.framesLost = 0;
+                    bestMatch.isTracked = true;
+                    bestMatch.confidence = currentFace.confidence;
+                    bestMatch.lastSeen = Date.now();
+
+                    // Update embedding với smoothing mạnh hơn
+                    if (currentFace.embedding && bestMatch.embedding) {
+                        for (let i = 0; i < bestMatch.embedding.length; i++) {
+                            bestMatch.embedding[i] = this.lerp(
+                                bestMatch.embedding[i],
+                                currentFace.embedding[i],
+                                0.5 // Tăng smoothing
+                            );
+                        }
                     }
 
-                    usedMatches.add(reappearedFace.id);
+                    usedMatches.add(bestMatchId);
 
-                    // Đánh dấu là lượt xuất hiện mới (vào lại khung hình)
-                    const faceSignature = this.getFaceSignature(reappearedFace);
+                    const faceSignature = this.getFaceSignature(bestMatch);
                     const isNewAppearance = this.checkAndUpdateFrameEntry(faceSignature);
 
                     results.push({
-                        id: reappearedFace.id,
+                        id: bestMatchId,
                         isNew: isNewAppearance,
-                        x: reappearedFace.x,
-                        y: reappearedFace.y,
-                        width: reappearedFace.width,
-                        height: reappearedFace.height,
-                        confidence: reappearedFace.confidence
+                        x: bestMatch.x,
+                        y: bestMatch.y,
+                        width: bestMatch.width,
+                        height: bestMatch.height,
+                        confidence: bestMatch.confidence
                     });
 
                     if (isNewAppearance) {
-                        this.incrementAppearanceCount(reappearedFace);
-                        console.log(`🎉 Face ${reappearedFace.id} REAPPEARED - COUNT: ${this.faceAppearances.get(faceSignature)}`);
+                        this.incrementAppearanceCount(bestMatch);
+                        console.log(`🎉 Face ${bestMatchId} entered frame (fallback) - COUNT: ${this.faceAppearances.get(faceSignature)}`);
                     }
 
                 } else {
@@ -1507,8 +1516,8 @@ class ImprovedFaceTracker {
         // Tạo signature từ 8 giá trị đầu của embedding với độ chính xác thấp hơn
         // để giảm sensitivity với thay đổi nhỏ
         return face.embedding.slice(0, 8).map(val => {
-            // Làm tròn đến 3 chữ số thập phân để ổn định hơn
-            return Math.round(val * 1000) / 1000;
+            // Làm tròn đến 2 chữ số thập phân để ổn định hơn (giảm từ 3 xuống 2)
+            return Math.round(val * 100) / 100;
         }).join('-');
     }
 
@@ -1530,18 +1539,30 @@ class ImprovedFaceTracker {
 
     // CÁC PHƯƠNG THỨC HIỆN CÓ KHÁC - GIỮ NGUYÊN
     calculateMatchScore(currentFace, knownFace) {
-        // Tính điểm dựa trên vị trí và embedding
+        // Tính điểm dựa trên vị trí trước
         const positionalScore = this.calculatePositionalScore(currentFace, knownFace);
+
+        // Nếu positional score quá thấp, không cần kiểm tra embedding
+        if (positionalScore < 0.3) {
+            return 0;
+        }
 
         let recognitionScore = 0;
         if (currentFace.embedding && knownFace.embedding) {
             recognitionScore = this.calculateEmbeddingSimilarity(currentFace.embedding, knownFace.embedding);
 
+            // DEBUG: Log similarity score
+            if (recognitionScore > 0.5) {
+                console.log(`🔍 Face matching: positional=${positionalScore.toFixed(2)}, recognition=${recognitionScore.toFixed(2)}`);
+            }
+
             // Nếu recognition score cao, ưu tiên hơn
-            if (recognitionScore > 0.9) {
+            if (recognitionScore > 0.85) {
                 return 0.9 + (recognitionScore * 0.1);
-            } else if (recognitionScore > this.recognitionThreshold) {
+            } else if (recognitionScore > 0.7) {
                 return 0.7 + (recognitionScore * 0.3);
+            } else if (recognitionScore > 0.6) {
+                return 0.5 + (recognitionScore * 0.2);
             }
         }
 
@@ -1569,24 +1590,31 @@ class ImprovedFaceTracker {
 
         const similarity = norm1 === 0 || norm2 === 0 ? 0 : dotProduct / (norm1 * norm2);
 
-        // Áp dụng threshold để tránh false positives
-        return similarity > 0.6 ? similarity : 0;
+        // Giảm threshold để dễ match hơn
+        return similarity > 0.4 ? similarity : 0;
     }
 
     calculatePositionalScore(currentFace, knownFace) {
         const iouScore = this.calculateIoU(currentFace, knownFace);
         const distance = this.calculateDistance(currentFace, knownFace);
 
-        // Nếu quá xa, loại bỏ
-        if (iouScore < 0.2 && distance > 100) {
+        // Tăng tolerance - cho phép khoảng cách lớn hơn
+        if (iouScore < 0.1 && distance > 150) {
             return 0;
         }
 
         const sizeSimilarity = this.calculateSizeSimilarity(currentFace, knownFace);
 
-        return (iouScore * 0.6) +
-            (Math.max(0, 1 - distance / 150) * 0.3) +
+        const score = (iouScore * 0.5) +
+            (Math.max(0, 1 - distance / 200) * 0.4) + // Tăng max distance
             (sizeSimilarity * 0.1);
+
+        // DEBUG
+        if (score > 0.4) {
+            console.log(`📍 Positional score: iou=${iouScore.toFixed(2)}, dist=${distance.toFixed(0)}, size=${sizeSimilarity.toFixed(2)}, total=${score.toFixed(2)}`);
+        }
+
+        return score;
     }
 
     findRecognitionMatch(currentFace) {
@@ -1806,6 +1834,29 @@ class ImprovedFaceTracker {
         }
     }
 
+    // Thêm phương thức mới vào ImprovedFaceTracker
+    findFallbackMatch(currentFace) {
+        let bestMatch = null;
+        let bestDistance = Infinity;
+
+        for (const [id, knownFace] of this.faces.entries()) {
+            if (knownFace.seen) continue;
+
+            const distance = this.calculateDistance(currentFace, knownFace);
+
+            // Nếu khoảng cách gần và kích thước tương tự
+            if (distance < 80 && this.calculateSizeSimilarity(currentFace, knownFace) > 0.6) {
+                if (distance < bestDistance) {
+                    bestDistance = distance;
+                    bestMatch = knownFace;
+                    bestMatchId = id;
+                }
+            }
+        }
+
+        return bestMatch ? { face: bestMatch, id: bestMatchId, distance: bestDistance } : null;
+    }
+
     // THÊM PHƯƠNG THỨC DEBUG
     debugFaceSignatures() {
         console.log('🔍 DEBUG Face Signatures:');
@@ -1813,5 +1864,21 @@ class ImprovedFaceTracker {
         console.log('- Total unique signatures:', this.faceAppearances.size);
         console.log('- Face appearances:', Array.from(this.faceAppearances.entries()));
         console.log('- Face in frame status:', Array.from(this.faceInFrameStatus.entries()));
+    }
+
+    // Thêm debug cho face signatures
+    debugFaceTracking() {
+        console.log('🔍 FACE TRACKING DEBUG:');
+        console.log(`- Tracked faces: ${this.faces.size}`);
+        console.log(`- Unique signatures: ${this.faceAppearances.size}`);
+
+        let signatureCounts = {};
+        for (const face of this.faces.values()) {
+            const signature = this.getFaceSignature(face);
+            signatureCounts[signature] = (signatureCounts[signature] || 0) + 1;
+        }
+
+        console.log('- Signature distribution:', signatureCounts);
+        console.log('- Face appearances:', Array.from(this.faceAppearances.entries()));
     }
 }
