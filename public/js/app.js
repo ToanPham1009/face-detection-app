@@ -202,11 +202,10 @@ class FaceDetectionApp {
 
         const elements = {
             'startCamera': () => this.faceDetector.startCamera(),
-            'stopCamera': () => this.faceDetector.stopCamera(),
+            'stopCamera': () => this.faceDetector.stopCamera(), // Gọi từ faceDetector
             'startTracking': () => this.startTracking(),
             'stopTracking': () => this.stopTracking(),
-
-            'debugButton': () => this.faceDetector.debugVideoState() // THÊM DÒNG NÀY
+            'debugButton': () => this.faceDetector.debugVideoState()
         };
 
         for (const [id, handler] of Object.entries(elements)) {
@@ -222,13 +221,25 @@ class FaceDetectionApp {
 
     async startTracking() {
         try {
+            // Bắt đầu tracking trước
             this.faceDetector.startTracking();
+
+            // Sau đó bắt đầu recording
             if (this.faceDetector.video) {
                 await this.videoManager.startRecording(this.faceDetector.video);
                 console.log('✅ Video recording started');
             } else {
                 console.warn('⚠️ Video element not available for recording');
             }
+
+            // Đảm bảo hiển thị được vẽ lại
+            setTimeout(() => {
+                if (this.faceDetector.isCameraOn) {
+                    this.faceDetector.drawVideoFrame();
+                    this.faceDetector.drawStatusInfo();
+                }
+            }, 100);
+
         } catch (error) {
             console.error('❌ Error starting tracking/recording:', error);
             alert('Lỗi khi bắt đầu ghi hình: ' + error.message);
@@ -252,6 +263,16 @@ class FaceDetectionApp {
             } else {
                 await this.saveSessionData({ filename: null });
                 console.log('⚠️ Session data saved without video');
+            }
+
+            // QUAN TRỌNG: Đảm bảo camera vẫn chạy và hiển thị
+            if (this.faceDetector.isCameraOn) {
+                // Đợi một chút để đảm bảo tracking đã dừng hoàn toàn
+                setTimeout(() => {
+                    this.faceDetector.drawVideoFrame();
+                    this.faceDetector.drawStatusInfo();
+                    console.log('🔄 Camera display restored after stopping tracking');
+                }, 200);
             }
 
             // HIỂN THỊ THÔNG BÁO
