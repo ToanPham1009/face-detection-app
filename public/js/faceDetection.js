@@ -18,6 +18,9 @@ class FaceDetector {
         this.totalFacesCount = 0;
         this.faceTracker = new ImprovedFaceTracker();
 
+        // Thêm dòng này - khai báo uniqueFaces
+        this.uniqueFaces = new Map(); // ← THÊM DÒNG NÀY
+
         // MediaPipe Variables
         this.lastResults = null;
         this.isDetectionRunning = false;
@@ -975,9 +978,21 @@ class FaceDetector {
         this.uniqueFaces.clear();
         this.faceTracker.reset();
 
+        // Đảm bảo uniqueFaces được khởi tạo
+        if (!this.uniqueFaces) {
+            this.uniqueFaces = new Map();
+        } else {
+            this.uniqueFaces.clear();
+        }
+
         const recordingStatus = document.getElementById('recordingStatus');
         if (recordingStatus) {
             recordingStatus.classList.add('active');
+        }
+
+        // Đảm bảo timeInterval được khởi tạo đúng
+        if (this.timeInterval) {
+            clearInterval(this.timeInterval);
         }
 
         this.timeInterval = setInterval(() => {
@@ -1006,6 +1021,11 @@ class FaceDetector {
         if (this.timeInterval) {
             clearInterval(this.timeInterval);
             this.timeInterval = null;
+        }
+
+        // Sửa dòng này - kiểm tra uniqueFaces tồn tại trước khi clear
+        if (this.uniqueFaces) {
+            this.uniqueFaces.clear();
         }
 
         if (this.onFaceCountUpdate) this.onFaceCountUpdate(0);
@@ -1051,6 +1071,11 @@ class FaceDetector {
         console.log('🛑 Stopping camera...');
         this.isDetectionRunning = false;
 
+        // Dừng tracking trước
+        if (this.isTracking) {
+            this.stopTracking();
+        }
+
         if (this.faceDetection) {
             try {
                 this.faceDetection.close();
@@ -1067,6 +1092,12 @@ class FaceDetector {
         if (this.video) {
             this.video.pause();
             this.video.srcObject = null;
+        }
+
+        // Xóa interval nếu tồn tại
+        if (this.timeInterval) {
+            clearInterval(this.timeInterval);
+            this.timeInterval = null;
         }
 
         if (this.isTracking) {
@@ -1159,6 +1190,11 @@ class ImprovedFaceTracker {
         this.positionHistory.clear();
         this.faceAppearances.clear();
         this.departedFaces.clear();
+
+        // Thêm kiểm tra an toàn
+        if (this.uniqueFaces) {
+            this.uniqueFaces.clear();
+        }
     }
 
     update(currentFaces) {
@@ -1432,7 +1468,7 @@ class ImprovedFaceTracker {
 
     getFaceSignature(face) {
         if (!face.embedding) return null;
-        
+
         // Tạo signature từ 8 giá trị đầu của embedding
         return face.embedding.slice(0, 8).map(val => val.toFixed(4)).join('-');
     }
