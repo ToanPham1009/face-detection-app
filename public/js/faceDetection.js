@@ -1569,18 +1569,77 @@ class ImprovedFaceTracker {
         return true;
     }
 
+    // THÊM PHƯƠNG THỨC MỚI - Merge các signature tương tự
+    mergeSimilarSignatures() {
+        const signatures = Array.from(this.faceAppearances.keys());
+        const merged = new Map();
+        const used = new Set();
+
+        for (let i = 0; i < signatures.length; i++) {
+            if (used.has(signatures[i])) continue;
+
+            const currentSig = signatures[i];
+            let totalCount = this.faceAppearances.get(currentSig) || 0;
+            used.add(currentSig);
+
+            // Tìm các signature tương tự
+            for (let j = i + 1; j < signatures.length; j++) {
+                if (used.has(signatures[j])) continue;
+
+                const otherSig = signatures[j];
+                if (this.areSignaturesSimilar(currentSig, otherSig)) {
+                    totalCount += this.faceAppearances.get(otherSig) || 0;
+                    used.add(otherSig);
+                    console.log(`🔄 Merging ${otherSig} into ${currentSig}`);
+                }
+            }
+
+            merged.set(currentSig, totalCount);
+        }
+
+        // Cập nhật lại faceAppearances
+        this.faceAppearances = merged;
+        console.log(`🔀 Signature merge completed: ${this.faceAppearances.size} unique signatures`);
+    }
+
+    // THÊM PHƯƠNG THỨC - Kiểm tra similarity
+    areSignaturesSimilar(sig1, sig2, threshold = 0.3) {
+        const values1 = sig1.split('-').map(Number);
+        const values2 = sig2.split('-').map(Number);
+
+        if (values1.length !== values2.length) return false;
+
+        let totalDiff = 0;
+        for (let i = 0; i < values1.length; i++) {
+            totalDiff += Math.abs(values1[i] - values2[i]);
+        }
+
+        const avgDiff = totalDiff / values1.length;
+        return avgDiff < threshold;
+    }
+
     getFaceSignature(face) {
         if (!face.embedding || face.embedding.length < 8) return null;
 
-        // Tạo signature từ 8 giá trị đầu của embedding với độ chính xác thấp hơn
-        // để giảm sensitivity với thay đổi nhỏ
-        return face.embedding.slice(0, 8).map(val => {
-            // Làm tròn đến 2 chữ số thập phân để ổn định hơn (giảm từ 3 xuống 2)
-            return Math.round(val * 100) / 100;
-        }).join('-');
-    }
+        // GIẢM độ nhạy: chỉ dùng 4 giá trị đầu + làm tròn đến 1 chữ số thập phân
+        const significantValues = face.embedding.slice(0, 4).map(val => {
+            // Làm tròn đến 1 chữ số thập phân (giảm từ 2 xuống 1)
+            return Math.round(val * 10) / 10;
+        });
 
+        const signature = significantValues.join('-');
+
+        // DEBUG: Log signature để kiểm tra
+        console.log(`🔍 Face Signature: ${signature} (from ${face.embedding.slice(0, 4).map(v => v.toFixed(2))})`);
+
+        return signature;
+    }
     getTotalAppearances() {
+        // Tự động merge các signature tương tự trước khi tính tổng
+        if (this.faceAppearances.size > 5) { // Chỉ merge khi có nhiều signatures
+            this.mergeSimilarSignatures();
+        }
+
         let total = 0;
         for (const count of this.faceAppearances.values()) {
             total += count;
