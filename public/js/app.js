@@ -206,7 +206,8 @@ class FaceDetectionApp {
             'startTracking': () => this.startTracking(),
             'stopTracking': () => this.stopTracking(),
             'debugButton': () => this.faceDetector.debugVideoState(),
-            'refreshDisplay': () => this.faceDetector.ensureVideoDisplay()
+            'refreshDisplay': () => this.faceDetector.ensureVideoDisplay(),
+            'debugFaces': () => this.faceDetector.faceTracker.debugFaceSignatures()
         };
 
         for (const [id, handler] of Object.entries(elements)) {

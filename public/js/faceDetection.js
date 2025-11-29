@@ -1323,9 +1323,21 @@ class ImprovedFaceTracker {
                 bestMatch.confidence = currentFace.confidence;
                 bestMatch.lastSeen = Date.now();
 
-                // Update embedding
+                // Update embedding để cải thiện recognition
                 if (currentFace.embedding) {
-                    bestMatch.embedding = currentFace.embedding;
+                    // Smooth embedding update
+                    if (!bestMatch.embedding) {
+                        bestMatch.embedding = currentFace.embedding;
+                    } else {
+                        // Cập nhật embedding với smoothing
+                        for (let i = 0; i < bestMatch.embedding.length; i++) {
+                            bestMatch.embedding[i] = this.lerp(
+                                bestMatch.embedding[i],
+                                currentFace.embedding[i],
+                                0.3
+                            );
+                        }
+                    }
                 }
 
                 usedMatches.add(bestMatchId);
@@ -1336,7 +1348,7 @@ class ImprovedFaceTracker {
 
                 results.push({
                     id: bestMatchId,
-                    isNew: isNewAppearance, // true nếu là lượt xuất hiện mới
+                    isNew: isNewAppearance,
                     x: bestMatch.x,
                     y: bestMatch.y,
                     width: bestMatch.width,
@@ -1347,7 +1359,7 @@ class ImprovedFaceTracker {
                 // TĂNG ĐẾM NẾU LÀ XUẤT HIỆN MỚI
                 if (isNewAppearance) {
                     this.incrementAppearanceCount(bestMatch);
-                    console.log(`🎉 Face ${bestMatchId} entered frame - NEW APPEARANCE`);
+                    console.log(`🎉 Face ${bestMatchId} entered frame - COUNT: ${this.faceAppearances.get(faceSignature)}`);
                 }
 
             } else {
@@ -1362,6 +1374,11 @@ class ImprovedFaceTracker {
                     reappearedFace.isTracked = true;
                     reappearedFace.confidence = currentFace.confidence;
                     reappearedFace.lastSeen = Date.now();
+
+                    // Update embedding
+                    if (currentFace.embedding) {
+                        reappearedFace.embedding = currentFace.embedding;
+                    }
 
                     usedMatches.add(reappearedFace.id);
 
@@ -1381,7 +1398,7 @@ class ImprovedFaceTracker {
 
                     if (isNewAppearance) {
                         this.incrementAppearanceCount(reappearedFace);
-                        console.log(`🎉 Face ${reappearedFace.id} REAPPEARED - NEW APPEARANCE`);
+                        console.log(`🎉 Face ${reappearedFace.id} REAPPEARED - COUNT: ${this.faceAppearances.get(faceSignature)}`);
                     }
 
                 } else {
@@ -1390,16 +1407,15 @@ class ImprovedFaceTracker {
                     this.faces.set(newFace.id, newFace);
 
                     // Đăng ký face signature và đánh dấu là vào khung hình
-                    const faceSignature = this.registerFaceSignature(newFace);
+                    const faceSignature = this.registerFaceSignature(newFace); // SỬA DÒNG NÀY
                     if (faceSignature) {
-                        this.faceInFrameStatus.set(faceSignature, true);
                         this.incrementAppearanceCount(newFace);
-                        console.log(`🎉 Face ${newFace.id} FIRST APPEARANCE`);
+                        console.log(`🎉 Face ${newFace.id} FIRST APPEARANCE - COUNT: 1`);
                     }
 
                     results.push({
                         id: newFace.id,
-                        isNew: true, // Lượt xuất hiện đầu tiên
+                        isNew: true,
                         x: currentFace.x,
                         y: currentFace.y,
                         width: currentFace.width,
@@ -1452,19 +1468,23 @@ class ImprovedFaceTracker {
     }
 
     calculateMatchScore(currentFace, knownFace) {
-        // Giữ nguyên implementation cũ
+        // Tính điểm dựa trên vị trí và embedding
         const positionalScore = this.calculatePositionalScore(currentFace, knownFace);
 
         let recognitionScore = 0;
         if (currentFace.embedding && knownFace.embedding) {
             recognitionScore = this.calculateEmbeddingSimilarity(currentFace.embedding, knownFace.embedding);
+
+            // Nếu recognition score cao, ưu tiên hơn
+            if (recognitionScore > 0.9) {
+                return 0.9 + (recognitionScore * 0.1);
+            } else if (recognitionScore > this.recognitionThreshold) {
+                return 0.7 + (recognitionScore * 0.3);
+            }
         }
 
-        if (recognitionScore > this.recognitionThreshold) {
-            return 0.7 + (recognitionScore * 0.3);
-        } else {
-            return positionalScore;
-        }
+        // Nếu không có embedding hoặc recognition score thấp, dùng positional
+        return positionalScore;
     }
 
     calculatePositionalScore(currentFace, knownFace) {
@@ -1584,10 +1604,13 @@ class ImprovedFaceTracker {
         norm1 = Math.sqrt(norm1);
         norm2 = Math.sqrt(norm2);
 
-        return norm1 === 0 || norm2 === 0 ? 0 : dotProduct / (norm1 * norm2);
+        const similarity = norm1 === 0 || norm2 === 0 ? 0 : dotProduct / (norm1 * norm2);
+
+        // Áp dụng threshold để tránh false positives
+        return similarity > 0.6 ? similarity : 0;
     }
 
-    registerFaceSignatureregisterFaceSignature(face) {
+    registerFaceSignature(face) {
         if (!face.embedding) return null;
 
         const signature = this.getFaceSignature(face);
@@ -1607,22 +1630,28 @@ class ImprovedFaceTracker {
         if (!face.embedding) return;
 
         const signature = this.getFaceSignature(face);
-        if (signature && this.faceAppearances.has(signature)) {
-            const currentCount = this.faceAppearances.get(signature);
-            this.faceAppearances.set(signature, currentCount + 1);
-            console.log(`📈 Face ${face.id} appearance count: ${currentCount + 1}`);
-        } else if (signature) {
-            // Nếu chưa có trong faceAppearances, tạo mới với count = 1
-            this.faceAppearances.set(signature, 1);
-            console.log(`📈 Face ${face.id} FIRST appearance count: 1`);
+        if (signature) {
+            if (this.faceAppearances.has(signature)) {
+                const currentCount = this.faceAppearances.get(signature);
+                this.faceAppearances.set(signature, currentCount + 1);
+                console.log(`📈 Face ${face.id} appearance count: ${currentCount + 1}`);
+            } else {
+                // Nếu chưa có trong faceAppearances, tạo mới với count = 1
+                this.faceAppearances.set(signature, 1);
+                console.log(`📈 Face ${face.id} FIRST appearance count: 1`);
+            }
         }
     }
 
     getFaceSignature(face) {
-        if (!face.embedding) return null;
+        if (!face.embedding || face.embedding.length < 8) return null;
 
-        // Tạo signature từ 8 giá trị đầu của embedding
-        return face.embedding.slice(0, 8).map(val => val.toFixed(4)).join('-');
+        // Tạo signature từ 8 giá trị đầu của embedding với độ chính xác thấp hơn
+        // để giảm sensitivity với thay đổi nhỏ
+        return face.embedding.slice(0, 8).map(val => {
+            // Làm tròn đến 3 chữ số thập phân để ổn định hơn
+            return Math.round(val * 1000) / 1000;
+        }).join('-');
     }
 
     getTotalAppearances() {
@@ -1786,5 +1815,13 @@ class ImprovedFaceTracker {
                 this.positionHistory.delete(id);
             }
         }
+    }
+
+    debugFaceSignatures() {
+        console.log('🔍 DEBUG Face Signatures:');
+        console.log('- Total tracked faces:', this.faces.size);
+        console.log('- Total unique signatures:', this.faceAppearances.size);
+        console.log('- Face appearances:', Array.from(this.faceAppearances.entries()));
+        console.log('- Face in frame status:', Array.from(this.faceInFrameStatus.entries()));
     }
 }
