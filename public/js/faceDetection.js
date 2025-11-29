@@ -1339,6 +1339,12 @@ class ImprovedFaceTracker {
 
         // Theo dõi khuôn mặt đang active trong frame hiện tại
         const currentActiveSignatures = new Set();
+        for (const currentFace of currentFaces) {
+            const currentSignature = this.getFaceSignature(currentFace);
+            if (currentSignature) {
+                currentActiveSignatures.add(currentSignature);
+            }
+        }
 
         // Giai đoạn 1: Match với faces đang được track
         for (const currentFace of currentFaces) {
@@ -1503,7 +1509,7 @@ class ImprovedFaceTracker {
     }
 
     // PHƯƠNG THỨC MỚI: Kiểm tra và cập nhật trạng thái vào khung hình
-    // TRONG ImprovedFaceTracker class - SỬA PHƯƠNG THỨC NÀY
+    // SỬA PHƯƠNG THỨC NÀY - Cho phép đếm lại khi ra vào khung hình
     checkAndUpdateFrameEntry(faceSignature) {
         if (!faceSignature) return false;
 
@@ -1511,70 +1517,56 @@ class ImprovedFaceTracker {
         const currentTime = Date.now();
 
         if (!wasInFrame) {
-            // Kiểm tra thời gian tối thiểu giữa các lần xuất hiện (ít nhất 2 giây)
-            const lastAppearanceTime = this.lastAppearanceTime.get(faceSignature) || 0;
-            const timeSinceLastAppearance = currentTime - lastAppearanceTime;
-
-            // CHỈ tính là xuất hiện mới nếu đã qua ít nhất 2-3 giây
-            if (timeSinceLastAppearance > 2000) { // 2000ms = 2 giây
-                this.faceInFrameStatus.set(faceSignature, true);
-                this.lastAppearanceTime.set(faceSignature, currentTime);
-                console.log(`🎯 Face ${faceSignature} ENTERED frame after ${timeSinceLastAppearance}ms`);
-                return true;
-            } else {
-                // Vẫn đánh dấu là trong frame nhưng không tính là xuất hiện mới
-                this.faceInFrameStatus.set(faceSignature, true);
-                return false;
-            }
+            // Khuôn mặt VỪA VÀO khung hình - LUÔN tính là xuất hiện mới
+            this.faceInFrameStatus.set(faceSignature, true);
+            this.lastAppearanceTime.set(faceSignature, currentTime);
+            console.log(`🎯 Face ${faceSignature} ENTERED frame - READY TO COUNT`);
+            return true;
         }
 
+        // Đã ở trong khung hình trước đó - không tính là mới
         return false;
     }
 
     // PHƯƠNG THỨC MỚI: Xử lý các khuôn mặt rời khung hình
+    // THÊM PHƯƠNG THỨC MỚI - Xử lý khi khuôn mặt rời khung hình
     handleFrameExits(currentActiveSignatures) {
         // Duyệt qua tất cả các khuôn mặt đã từng xuất hiện
         for (const [signature, wasInFrame] of this.faceInFrameStatus.entries()) {
             if (wasInFrame && !currentActiveSignatures.has(signature)) {
-                // Khuôn mặt đã rời khung hình
+                // Khuôn mặt đã RỜI khung hình - cho phép đếm lại khi vào sau
                 this.faceInFrameStatus.set(signature, false);
-                console.log(`🚪 Face ${signature} left the frame`);
+                console.log(`🚪 Face ${signature} LEFT frame - CAN COUNT AGAIN`);
             }
         }
     }
 
-    // SỬA PHƯƠNG THỨC NÀY
-    // SỬA PHƯƠNG THỨC incrementAppearanceCount
+    // SỬA PHƯƠNG THỨC NÀY - Luôn đếm khi vào khung hình mới
     incrementAppearanceCount(face) {
         if (!face.embedding) {
             console.log('❌ No embedding for face, cannot count');
-            return;
+            return false;
         }
 
         const signature = this.getFaceSignature(face);
         if (!signature) {
             console.log('❌ No signature for face, cannot count');
-            return;
+            return false;
         }
 
         const currentTime = Date.now();
-        const lastTime = this.lastAppearanceTime.get(signature) || 0;
 
-        // DEBUG: Log timing info
-        console.log(`⏰ Face timing: current=${currentTime}, last=${lastTime}, diff=${currentTime - lastTime}`);
+        // DEBUG: Log để theo dõi
+        console.log(`⏰ Face ${face.id} timing check - READY TO COUNT`);
 
-        // CHỈ tăng count nếu đã qua đủ thời gian (3 giây)
-        if (currentTime - lastTime >= this.minReappearanceDelay) {
-            const currentCount = this.faceAppearances.get(signature) || 0;
-            const newCount = currentCount + 1;
-            this.faceAppearances.set(signature, newCount);
-            this.lastAppearanceTime.set(signature, currentTime);
-            console.log(`✅ 📈 Face ${face.id} appearance count: ${newCount} (after ${currentTime - lastTime}ms)`);
-            return true; // Đếm thành công
-        } else {
-            console.log(`⏸️ Face ${face.id} skipped - too soon: ${currentTime - lastTime}ms`);
-            return false; // Không đếm
-        }
+        // LUÔN tăng count khi vào khung hình mới
+        const currentCount = this.faceAppearances.get(signature) || 0;
+        const newCount = currentCount + 1;
+        this.faceAppearances.set(signature, newCount);
+        this.lastAppearanceTime.set(signature, currentTime);
+
+        console.log(`✅ 📈 Face ${face.id} appearance count: ${newCount}`);
+        return true;
     }
 
     getFaceSignature(face) {
