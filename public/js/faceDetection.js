@@ -53,10 +53,10 @@ class FaceDetector {
     // THÊM PHƯƠNG THỨC KHỞI TẠO FACE TRACKER
     initializeFaceTracker() {
         try {
-            this.faceTracker = new AccurateFaceTracker();
-            console.log('✅ Accurate FaceTracker initialized successfully');
+            this.faceTracker = new FastAccurateFaceTracker();
+            console.log('✅ FastAccurate FaceTracker initialized successfully');
         } catch (error) {
-            console.error('❌ Failed to initialize Accurate FaceTracker:', error);
+            console.error('❌ Failed to initialize FastAccurate FaceTracker:', error);
             this.faceTracker = this.createFallbackTracker();
         }
     }
