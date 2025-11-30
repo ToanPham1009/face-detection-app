@@ -53,10 +53,18 @@ class FaceDetector {
     // THÊM PHƯƠNG THỨC KHỞI TẠO FACE TRACKER
     initializeFaceTracker() {
         try {
-            this.faceTracker = new PositionBasedFaceTracker(); // SỬ DỤNG TRACKER DỰA TRÊN VỊ TRÍ
-            console.log('✅ PositionBased FaceTracker initialized successfully');
+            this.faceTracker = new DebugPositionBasedFaceTracker();
+
+            // TRUYỀN KÍCH THƯỚC CANVAS THỰC TẾ
+            if (this.canvas) {
+                this.faceTracker.canvasWidth = this.canvas.width;
+                this.faceTracker.canvasHeight = this.canvas.height;
+                console.log(`📐 Canvas size set: ${this.canvas.width}x${this.canvas.height}`);
+            }
+
+            console.log('✅ Debug PositionBased FaceTracker initialized successfully');
         } catch (error) {
-            console.error('❌ Failed to initialize PositionBased FaceTracker:', error);
+            console.error('❌ Failed to initialize Debug FaceTracker:', error);
             this.faceTracker = this.createFallbackTracker();
         }
     }
@@ -1038,8 +1046,12 @@ class FaceDetector {
             this.canvas.width = this.video.videoWidth;
             this.canvas.height = this.video.videoHeight;
 
-            // Reset transform - video sẽ được flip khi vẽ frame
-            this.ctx.setTransform(1, 0, 0, 1, 0, 0);
+            // CẬP NHẬT KÍCH THƯỚC CANVAS CHO TRACKER
+            if (this.faceTracker && this.faceTracker.canvasWidth !== undefined) {
+                this.faceTracker.canvasWidth = this.canvas.width;
+                this.faceTracker.canvasHeight = this.canvas.height;
+                console.log(`🔄 Updated tracker canvas size: ${this.canvas.width}x${this.canvas.height}`);
+            }
 
             this.canvasInitialized = true;
             this.drawVideoFrame();
@@ -1357,22 +1369,22 @@ class FaceDetector {
     }
 }
 
-class PositionBasedFaceTracker {
+class DebugPositionBasedFaceTracker {
     constructor() {
         this.trackedPersons = new Map();
         this.nextPersonId = 1;
 
-        // Dựa vào vị trí để phát hiện biến mất
-        this.frameMargin = 50; // Khoảng cách từ biên frame
+        // Thông tin về canvas
+        this.canvasWidth = 640; // Giả định
+        this.canvasHeight = 480; // Giả định
+        this.frameMargin = 80; // Tăng margin để dễ phát hiện
+
         this.minDisappearanceTime = 1000; // 1 giây
-        this.reappearanceDistance = 100; // Khoảng cách để tính là xuất hiện lại
 
         this.facePresenceState = new Map();
         this.faceAppearanceCount = new Map();
 
-        this.lastLogTime = 0;
-
-        console.log('🎯 PositionBasedFaceTracker - Using position for disappearance');
+        console.log('🐛 DebugPositionBasedFaceTracker - Detailed position tracking');
     }
 
     update(currentFaces) {
@@ -1380,9 +1392,12 @@ class PositionBasedFaceTracker {
         const usedMatches = new Set();
         const now = Date.now();
 
-        // Đánh dấu tất cả persons là không seen
+        console.log(`🔍 UPDATE: ${currentFaces.length} faces detected`);
+
+        // Đánh dấu tất cả persons là không seen TRƯỚC
         for (const person of this.trackedPersons.values()) {
             person.seen = false;
+            console.log(`👤 Person ${person.id}: marked as not seen`);
         }
 
         // Xử lý từng khuôn mặt hiện tại
@@ -1391,10 +1406,14 @@ class PositionBasedFaceTracker {
             let bestScore = 0.3;
             let bestMatchId = null;
 
+            console.log(`📍 Current face at (${currentFace.x.toFixed(1)}, ${currentFace.y.toFixed(1)}) - size: ${currentFace.width.toFixed(1)}x${currentFace.height.toFixed(1)}`);
+
             for (const [id, knownPerson] of this.trackedPersons.entries()) {
                 if (knownPerson.seen || usedMatches.has(id)) continue;
 
                 const score = this.calculateMatchScore(currentFace, knownPerson);
+                console.log(`📊 Match Person ${id}: score=${score.toFixed(3)}`);
+
                 if (score > bestScore) {
                     bestScore = score;
                     bestMatch = knownPerson;
@@ -1403,33 +1422,34 @@ class PositionBasedFaceTracker {
             }
 
             if (bestMatch && bestMatchId) {
-                // Match found
-                this.updatePersonData(bestMatch, currentFace);
+                console.log(`✅ MATCHED: Person ${bestMatchId}`);
+
                 bestMatch.seen = true;
                 bestMatch.isTracked = true;
                 usedMatches.add(bestMatchId);
 
-                // KIỂM TRA XUẤT HIỆN LẠI DỰA TRÊN VỊ TRÍ
-                this.handlePositionBasedAppearance(bestMatchId, currentFace, now);
+                // CẬP NHẬT VỊ TRÍ VÀ KIỂM TRA
+                this.updateAndCheckPosition(bestMatchId, currentFace, now);
 
                 results.push({
                     id: bestMatchId,
                     isNew: false,
-                    x: bestMatch.x,
-                    y: bestMatch.y,
-                    width: bestMatch.width,
-                    height: bestMatch.height,
-                    confidence: bestMatch.confidence,
+                    x: currentFace.x,
+                    y: currentFace.y,
+                    width: currentFace.width,
+                    height: currentFace.height,
+                    confidence: currentFace.confidence,
                     appearanceCount: this.faceAppearanceCount.get(bestMatchId) || 1
                 });
 
             } else {
-                // Tạo person mới
+                console.log(`🆕 NEW PERSON: Creating Person ${this.nextPersonId}`);
+
                 const newPerson = this.createNewPerson(currentFace);
                 const newPersonId = newPerson.id;
                 this.trackedPersons.set(newPersonId, newPerson);
 
-                this.initializeAppearanceCounting(newPersonId, now);
+                this.initializeAppearanceCounting(newPersonId, now, currentFace);
                 results.push({
                     id: newPersonId,
                     isNew: true,
@@ -1443,24 +1463,42 @@ class PositionBasedFaceTracker {
             }
         }
 
-        // PHÁT HIỆN BIẾN MẤT DỰA TRÊN VỊ TRÍ NGOÀI FRAME
-        this.handlePositionBasedDisappearance(now);
+        // KIỂM TRA KHUÔN MẶT KHÔNG ĐƯỢC THẤY
+        this.checkUnseenFaces(now);
 
         return results;
     }
 
-    handlePositionBasedAppearance(personId, currentFace, now) {
+    updateAndCheckPosition(personId, currentFace, now) {
         const presenceState = this.facePresenceState.get(personId);
 
         if (!presenceState) {
-            this.initializeAppearanceCounting(personId, now);
+            this.initializeAppearanceCounting(personId, now, currentFace);
             return;
         }
 
-        // KIỂM TRA NẾU KHUÔN MẶT VỪA QUAY LẠI TỪ NGOÀI FRAME
-        if (!presenceState.isInFrame) {
-            const timeSinceExit = now - presenceState.lastExitTime;
+        // KIỂM TRA VỊ TRÍ HIỆN TẠI
+        const isCurrentlyOutOfFrame = this.isFaceOutOfFrame(currentFace);
+        console.log(`📍 Person ${personId} position check: (${currentFace.x.toFixed(1)}, ${currentFace.y.toFixed(1)}) - OutOfFrame: ${isCurrentlyOutOfFrame}`);
 
+        // CẬP NHẬT VỊ TRÍ
+        presenceState.lastKnownPosition = {
+            x: currentFace.x,
+            y: currentFace.y,
+            width: currentFace.width,
+            height: currentFace.height,
+            timestamp: now
+        };
+
+        // NẾU ĐANG NGOÀI FRAME VÀ TRƯỚC ĐÓ TRONG FRAME → VỪA RA NGOÀI
+        if (isCurrentlyOutOfFrame && presenceState.isInFrame) {
+            presenceState.isInFrame = false;
+            presenceState.lastExitTime = now;
+            console.log(`🚪 DISAPPEAR: Person ${personId} just left frame!`);
+        }
+        // NẾU ĐANG TRONG FRAME VÀ TRƯỚC ĐÓ NGOÀI FRAME → VỪA VÀO LẠI
+        else if (!isCurrentlyOutOfFrame && !presenceState.isInFrame) {
+            const timeSinceExit = now - presenceState.lastExitTime;
             if (timeSinceExit >= this.minDisappearanceTime) {
                 presenceState.isInFrame = true;
                 presenceState.lastEnterTime = now;
@@ -1469,73 +1507,78 @@ class PositionBasedFaceTracker {
                 const newCount = currentCount + 1;
                 this.faceAppearanceCount.set(personId, newCount);
 
-                console.log(`🔄 RE-APPEAR: Person ${personId} - Appearance #${newCount} (after ${timeSinceExit}ms)`);
-                this.lastLogTime = now;
+                console.log(`🎉 RE-APPEAR: Person ${personId} - Appearance #${newCount} (after ${timeSinceExit}ms)`);
             }
         }
-
-        // CẬP NHẬT VỊ TRÍ HIỆN TẠI
-        presenceState.lastKnownPosition = {
-            x: currentFace.x,
-            y: currentFace.y,
-            width: currentFace.width,
-            height: currentFace.height
-        };
     }
 
-    handlePositionBasedDisappearance(now) {
+    checkUnseenFaces(now) {
+        console.log(`🔍 Checking ${this.trackedPersons.size} tracked persons for unseen...`);
+
         for (const [personId, person] of this.trackedPersons.entries()) {
             const presenceState = this.facePresenceState.get(personId);
 
-            if (!presenceState || !presenceState.lastKnownPosition) continue;
+            if (!presenceState || !presenceState.lastKnownPosition) {
+                console.log(`❓ Person ${personId}: No presence state or position`);
+                continue;
+            }
 
-            // Nếu không được thấy trong frame hiện tại
             if (!person.seen) {
-                // KIỂM TRA XEM CÓ PHẢI ĐÃ RA NGOÀI FRAME KHÔNG
+                console.log(`👻 Person ${personId} not seen in this frame`);
+
+                // Kiểm tra xem có phải đã ra khỏi frame từ trước không
                 const isOutOfFrame = this.isFaceOutOfFrame(presenceState.lastKnownPosition);
+                const timeSinceLastSeen = now - presenceState.lastKnownPosition.timestamp;
+
+                console.log(`📍 Person ${personId} last position: (${presenceState.lastKnownPosition.x.toFixed(1)}, ${presenceState.lastKnownPosition.y.toFixed(1)}) - OutOfFrame: ${isOutOfFrame}, TimeSinceSeen: ${timeSinceLastSeen}ms`);
 
                 if (isOutOfFrame && presenceState.isInFrame) {
                     presenceState.isInFrame = false;
                     presenceState.lastExitTime = now;
-
-                    console.log(`👋 DISAPPEAR: Person ${personId} left frame (position: ${presenceState.lastKnownPosition.x}, ${presenceState.lastKnownPosition.y})`);
-                    this.lastLogTime = now;
+                    console.log(`🚪 DISAPPEAR (unseen): Person ${personId} confirmed left frame!`);
                 }
             }
         }
     }
 
-    // KIỂM TRA XEM KHUÔN MẶT CÓ Ở NGOÀI FRAME KHÔNG
-    isFaceOutOfFrame(facePosition) {
-        // Giả sử canvas size là 640x480
-        const canvasWidth = 640;
-        const canvasHeight = 480;
+    isFaceOutOfFrame(face) {
+        const faceLeft = face.x - face.width / 2;
+        const faceRight = face.x + face.width / 2;
+        const faceTop = face.y - face.height / 2;
+        const faceBottom = face.y + face.height / 2;
 
-        const faceLeft = facePosition.x - facePosition.width / 2;
-        const faceRight = facePosition.x + facePosition.width / 2;
-        const faceTop = facePosition.y - facePosition.height / 2;
-        const faceBottom = facePosition.y + facePosition.height / 2;
+        console.log(`📐 Face bounds: L=${faceLeft.toFixed(1)}, R=${faceRight.toFixed(1)}, T=${faceTop.toFixed(1)}, B=${faceBottom.toFixed(1)}`);
+        console.log(`📏 Canvas bounds: L=${this.frameMargin}, R=${this.canvasWidth - this.frameMargin}, T=${this.frameMargin}, B=${this.canvasHeight - this.frameMargin}`);
 
-        // Khuôn mặt được coi là "ngoài frame" nếu phần lớn nằm ngoài biên
         const isLeftOut = faceRight < this.frameMargin;
-        const isRightOut = faceLeft > canvasWidth - this.frameMargin;
+        const isRightOut = faceLeft > this.canvasWidth - this.frameMargin;
         const isTopOut = faceBottom < this.frameMargin;
-        const isBottomOut = faceTop > canvasHeight - this.frameMargin;
+        const isBottomOut = faceTop > this.canvasHeight - this.frameMargin;
 
-        return isLeftOut || isRightOut || isTopOut || isBottomOut;
+        const result = isLeftOut || isRightOut || isTopOut || isBottomOut;
+        console.log(`🎯 OutOfFrame result: ${result} (L:${isLeftOut}, R:${isRightOut}, T:${isTopOut}, B:${isBottomOut})`);
+
+        return result;
     }
 
-    initializeAppearanceCounting(personId, now) {
+    initializeAppearanceCounting(personId, now, face) {
+        const isInitiallyOutOfFrame = this.isFaceOutOfFrame(face);
+
         this.facePresenceState.set(personId, {
-            isInFrame: true,
-            lastExitTime: 0,
-            lastEnterTime: now,
-            lastKnownPosition: null
+            isInFrame: !isInitiallyOutOfFrame, // Nếu bắt đầu ngoài frame thì không tính là trong frame
+            lastExitTime: isInitiallyOutOfFrame ? now : 0,
+            lastEnterTime: isInitiallyOutOfFrame ? 0 : now,
+            lastKnownPosition: {
+                x: face.x,
+                y: face.y,
+                width: face.width,
+                height: face.height,
+                timestamp: now
+            }
         });
         this.faceAppearanceCount.set(personId, 1);
 
-        console.log(`🎯 NEW FACE: Person ${personId} - First appearance`);
-        this.lastLogTime = now;
+        console.log(`👶 NEW FACE: Person ${personId} - First appearance (initially ${isInitiallyOutOfFrame ? 'OUTSIDE' : 'INSIDE'} frame)`);
     }
 
     calculateMatchScore(currentFace, knownPerson) {
@@ -1543,27 +1586,8 @@ class PositionBasedFaceTracker {
             Math.pow(currentFace.x - knownPerson.x, 2) +
             Math.pow(currentFace.y - knownPerson.y, 2)
         );
-
-        const distanceScore = Math.max(0, 1 - distance / 150);
-        const sizeSimilarity = this.calculateSizeSimilarity(currentFace, knownPerson);
-
-        return (distanceScore * 0.7) + (sizeSimilarity * 0.3);
-    }
-
-    calculateSizeSimilarity(face1, face2) {
-        const area1 = face1.width * face1.height;
-        const area2 = face2.width * face2.height;
-        const minArea = Math.min(area1, area2);
-        const maxArea = Math.max(area1, area2);
-        return maxArea > 0 ? minArea / maxArea : 0;
-    }
-
-    updatePersonData(person, face) {
-        person.x = this.lerp(person.x, face.x, 0.3);
-        person.y = this.lerp(person.y, face.y, 0.3);
-        person.width = this.lerp(person.width, face.width, 0.2);
-        person.height = this.lerp(person.height, face.height, 0.2);
-        person.lastSeen = Date.now();
+        const distanceScore = Math.max(0, 1 - distance / 200);
+        return distanceScore;
     }
 
     createNewPerson(face) {
@@ -1580,10 +1604,6 @@ class PositionBasedFaceTracker {
             isTracked: true,
             seen: true
         };
-    }
-
-    lerp(start, end, factor) {
-        return start * (1 - factor) + end * factor;
     }
 
     getCurrentPersonsCount() {
@@ -1610,7 +1630,7 @@ class PositionBasedFaceTracker {
             uniquePersons: this.getUniqueFacesCount(),
             currentPersons: this.getCurrentPersonsCount(),
             trackedPersons: this.trackedPersons.size,
-            method: "position_based"
+            method: "debug_position"
         };
     }
 
@@ -1619,6 +1639,6 @@ class PositionBasedFaceTracker {
         this.facePresenceState.clear();
         this.faceAppearanceCount.clear();
         this.nextPersonId = 1;
-        console.log('🔄 PositionBased tracker reset completely');
+        console.log('🔄 Debug tracker reset completely');
     }
 }
