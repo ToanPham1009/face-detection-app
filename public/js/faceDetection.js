@@ -518,6 +518,16 @@ class FaceDetector {
         this.ctx.fillText(infoText, start[0], start[1] - 8);
 
         this.ctx.restore();
+        
+        // Thêm thông tin counting
+        if (trackedFace && this.isTracking) {
+            const appearanceCount = this.faceTracker.appearanceCounts.get(trackedFace.id) || 1;
+            const countText = `Count: ${appearanceCount}`;
+
+            this.ctx.fillStyle = '#00ff00';
+            this.ctx.font = 'bold 11px Arial';
+            this.ctx.fillText(countText, start[0], start[1] - 25);
+        }
     }
 
     drawLandmarks(landmarks) {
@@ -1624,7 +1634,15 @@ class ProfessionalFaceTracker {
         norm1 = Math.sqrt(norm1);
         norm2 = Math.sqrt(norm2);
 
-        return norm1 > 0 && norm2 > 0 ? dotProduct / (norm1 * norm2) : 0;
+        const similarity = norm1 > 0 && norm2 > 0 ? dotProduct / (norm1 * norm2) : 0;
+
+        // CHỈ log khi similarity thay đổi đáng kể
+        if (similarity > 0.9 && (!this.lastSimilarity || Math.abs(similarity - this.lastSimilarity) > 0.01)) {
+            console.log(`🔍 Feature match: Person ${bestMatchId} (similarity: ${similarity.toFixed(3)})`);
+            this.lastSimilarity = similarity;
+        }
+
+        return similarity;
     }
 
     /**
@@ -1641,22 +1659,25 @@ class ProfessionalFaceTracker {
     }
 
     extractFaceEmbedding(detection) {
-        // Use the existing embedding creation logic, but make it more stable
+        // Sử dụng ít features hơn để tăng tốc độ
         const landmarks = detection.landmarks || [];
         const embedding = [
-            detection.width / 640,  // Normalized by typical canvas width
-            detection.height / 480, // Normalized by typical canvas height
+            detection.width / 640,
+            detection.height / 480,
             detection.x / 640,
             detection.y / 480,
             detection.confidence
         ];
 
-        // Add stable landmark-based features if available
+        // Chỉ thêm landmark features nếu thực sự cần
         if (landmarks.length >= 6) {
-            // Use relative distances that are stable across frames
+            // Tính các features ổn định
             const eyeDistance = this.calculateStableEyeDistance(landmarks);
+            const noseToMouth = this.calculateNoseToMouthDistance(landmarks);
+
             embedding.push(eyeDistance);
-            embedding.push(detection.width / detection.height); // Aspect ratio
+            embedding.push(noseToMouth);
+            embedding.push(detection.width / detection.height);
         }
 
         return embedding;
