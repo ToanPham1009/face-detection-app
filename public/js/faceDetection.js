@@ -53,10 +53,10 @@ class FaceDetector {
     // THÊM PHƯƠNG THỨC KHỞI TẠO FACE TRACKER
     initializeFaceTracker() {
         try {
-            this.faceTracker = new FastAccurateFaceTracker();
-            console.log('✅ FastAccurate FaceTracker initialized successfully');
+            this.faceTracker = new UltraFastFaceTracker(); // SỬ DỤNG TRACKER MỚI
+            console.log('✅ UltraFast FaceTracker initialized successfully');
         } catch (error) {
-            console.error('❌ Failed to initialize FastAccurate FaceTracker:', error);
+            console.error('❌ Failed to initialize UltraFast FaceTracker:', error);
             this.faceTracker = this.createFallbackTracker();
         }
     }
@@ -1356,24 +1356,30 @@ class FaceDetector {
     }
 }
 
-class FastAccurateFaceTracker {
+class UltraFastFaceTracker {
     constructor() {
         this.trackedPersons = new Map();
         this.nextPersonId = 1;
-        
-        // GIẢM MẠNH thời gian theo dõi khuôn mặt mất tích
-        this.maxFramesLost = 15; // ~1 giây (từ 60 frames → 15 frames)
-        
-        // THÊM: Thời gian tối thiểu để tính là "biến mất" 
-        this.minDisappearanceTime = 500; // 0.5 giây
-        
+
+        // SIÊU NHANH: chỉ 0.3 giây biến mất là tính mới
+        this.maxFramesLost = 5; // ~0.3 giây ở 15 FPS
+        this.minDisappearanceTime = 300; // 0.3 giây
+
         this.facePresenceState = new Map();
         this.faceAppearanceCount = new Map();
-        
-        this.lastLogTime = 0;
-        this.logInterval = 2000;
 
-        console.log('🎯 FastAccurateFaceTracker - Quick disappearance detection');
+        this.lastLogTime = 0;
+        this.logInterval = 1000; // Log mỗi giây
+
+        console.log('⚡ UltraFastFaceTracker - 0.3s disappearance detection');
+    }
+
+    resetCompletely() {
+        this.trackedPersons.clear();
+        this.facePresenceState.clear();
+        this.faceAppearanceCount.clear();
+        this.nextPersonId = 1;
+        console.log('🔄 UltraFast tracker reset completely');
     }
 
     update(currentFaces) {
@@ -1381,7 +1387,7 @@ class FastAccurateFaceTracker {
         const usedMatches = new Set();
         const now = Date.now();
 
-        // Đánh dấu tất cả persons hiện tại là không seen
+        // Đánh dấu tất cả persons là không seen
         for (const person of this.trackedPersons.values()) {
             person.seen = false;
             person.framesLost++;
@@ -1390,13 +1396,13 @@ class FastAccurateFaceTracker {
         // Xử lý từng khuôn mặt hiện tại
         for (const currentFace of currentFaces) {
             let bestMatch = null;
-            let bestScore = 0.3; // GIẢM ngưỡng matching
+            let bestScore = 0.2; // RẤT THẤP để dễ match
             let bestMatchId = null;
 
             for (const [id, knownPerson] of this.trackedPersons.entries()) {
                 if (knownPerson.seen || usedMatches.has(id)) continue;
 
-                const score = this.calculateMatchScore(currentFace, knownPerson);
+                const score = this.calculateUltraMatchScore(currentFace, knownPerson);
                 if (score > bestScore) {
                     bestScore = score;
                     bestMatch = knownPerson;
@@ -1405,15 +1411,15 @@ class FastAccurateFaceTracker {
             }
 
             if (bestMatch && bestMatchId) {
-                // Match found
-                this.updatePersonData(bestMatch, currentFace);
+                // Match found - CẬP NHẬT NHANH
+                this.updatePersonDataUltra(bestMatch, currentFace);
                 bestMatch.seen = true;
                 bestMatch.framesLost = 0;
                 bestMatch.isTracked = true;
                 usedMatches.add(bestMatchId);
 
-                // XỬ LÝ ĐẾM XUẤT HIỆN VỚI THỜI GIAN NGẮN
-                this.handleFastAppearanceCounting(bestMatchId, now);
+                // XỬ LÝ ĐẾM SIÊU NHANH
+                this.handleUltraAppearanceCounting(bestMatchId, now);
 
                 results.push({
                     id: bestMatchId,
@@ -1432,7 +1438,7 @@ class FastAccurateFaceTracker {
                 const newPersonId = newPerson.id;
                 this.trackedPersons.set(newPersonId, newPerson);
 
-                this.initializeAppearanceCounting(newPersonId, now);
+                this.initializeUltraAppearanceCounting(newPersonId, now);
                 results.push({
                     id: newPersonId,
                     isNew: true,
@@ -1446,151 +1452,116 @@ class FastAccurateFaceTracker {
             }
         }
 
-        // XỬ LÝ KHUÔN MẶT BIẾN MẤT VỚI THỜI GIAN NGẮN
-        this.handleFastDisappearedFaces(now);
+        // XỬ LÝ BIẾN MẤT SIÊU NHANH
+        this.handleUltraDisappearedFaces(now);
 
-        // Dọn dẹp nhanh hơn
-        this.fastCleanupLostPersons();
+        // Dọn dẹp cực nhanh
+        this.ultraCleanupLostPersons();
 
         return results;
     }
 
-    initializeAppearanceCounting(personId, now) {
+    initializeUltraAppearanceCounting(personId, now) {
         this.facePresenceState.set(personId, {
             isInFrame: true,
             lastExitTime: 0,
             lastEnterTime: now,
-            hasJustEntered: true // THÊM: cờ mới vào
+            framesSinceLastSeen: 0
         });
         this.faceAppearanceCount.set(personId, 1);
-        
-        if (now - this.lastLogTime > 1000) { // Log nhanh hơn
-            console.log(`🎯 NEW FACE: Person ${personId} - First appearance`);
-            this.lastLogTime = now;
-        }
+
+        console.log(`🎯 NEW FACE: Person ${personId} - First appearance`);
+        this.lastLogTime = now;
     }
 
-    handleFastAppearanceCounting(personId, now) {
+    handleUltraAppearanceCounting(personId, now) {
         const presenceState = this.facePresenceState.get(personId);
 
         if (!presenceState) {
-            this.initializeAppearanceCounting(personId, now);
+            this.initializeUltraAppearanceCounting(personId, now);
             return;
         }
 
-        // Nếu vừa mới vào frame và đã đủ thời gian từ lần thoát trước
+        // Reset counter khi thấy mặt
+        presenceState.framesSinceLastSeen = 0;
+
+        // Nếu ĐANG NGOÀI frame và đã đủ thời gian
         if (!presenceState.isInFrame) {
             const timeSinceExit = now - presenceState.lastExitTime;
-            
-            // CHỈ CẦN 0.5s biến mất là tính là xuất hiện lại
+
+            // CHỈ CẦN 0.3s là tính xuất hiện lại
             if (timeSinceExit >= this.minDisappearanceTime) {
                 presenceState.isInFrame = true;
                 presenceState.lastEnterTime = now;
-                
+
                 const currentCount = this.faceAppearanceCount.get(personId) || 0;
                 const newCount = currentCount + 1;
                 this.faceAppearanceCount.set(personId, newCount);
 
-                if (now - this.lastLogTime > 1000) {
-                    console.log(`🔄 RE-APPEAR: Person ${personId} - Appearance #${newCount} (after ${timeSinceExit}ms)`);
-                    this.lastLogTime = now;
-                }
+                console.log(`🔄 RE-APPEAR: Person ${personId} - Appearance #${newCount} (after ${timeSinceExit}ms)`);
+                this.lastLogTime = now;
             }
-        }
-        
-        // Reset cờ "vừa mới vào"
-        if (presenceState.hasJustEntered) {
-            presenceState.hasJustEntered = false;
         }
     }
 
-    handleFastDisappearedFaces(now) {
+    handleUltraDisappearedFaces(now) {
         for (const [personId, person] of this.trackedPersons.entries()) {
             const presenceState = this.facePresenceState.get(personId);
-            
+
             if (!presenceState) continue;
 
-            // Nếu không thấy và ĐANG trong frame → vừa biến mất
-            if (!person.seen && presenceState.isInFrame && !presenceState.hasJustEntered) {
+            // Tăng counter cho frames không thấy
+            if (!person.seen) {
+                presenceState.framesSinceLastSeen++;
+            }
+
+            // Nếu không thấy và ĐANG TRONG frame → vừa biến mất
+            if (!person.seen && presenceState.isInFrame && presenceState.framesSinceLastSeen >= 3) {
                 presenceState.isInFrame = false;
                 presenceState.lastExitTime = now;
 
-                if (now - this.lastLogTime > 1000) {
-                    console.log(`👋 DISAPPEAR: Person ${personId} left frame`);
-                    this.lastLogTime = now;
-                }
+                console.log(`👋 DISAPPEAR: Person ${personId} left frame (${presenceState.framesSinceLastSeen} frames missed)`);
+                this.lastLogTime = now;
             }
         }
     }
 
-    calculateMatchScore(currentFace, knownPerson) {
+    calculateUltraMatchScore(currentFace, knownPerson) {
         const distance = Math.sqrt(
             Math.pow(currentFace.x - knownPerson.x, 2) +
             Math.pow(currentFace.y - knownPerson.y, 2)
         );
 
-        // TĂNG khoảng cách cho phép
-        const distanceScore = Math.max(0, 1 - distance / 150);
+        // RẤT RỘNG: 200 pixels
+        const distanceScore = Math.max(0, 1 - distance / 200);
         const sizeSimilarity = this.calculateSizeSimilarity(currentFace, knownPerson);
-        
-        return (distanceScore * 0.7) + (sizeSimilarity * 0.3); // TĂNG trọng số distance
+
+        return (distanceScore * 0.8) + (sizeSimilarity * 0.2);
     }
 
-    fastCleanupLostPersons() {
-        const now = Date.now();
+    updatePersonDataUltra(person, face) {
+        // CẬP NHẬT RẤT NHANH
+        person.x = face.x; // Không smoothing để phản ứng nhanh
+        person.y = face.y;
+        person.width = face.width;
+        person.height = face.height;
+        person.lastSeen = Date.now();
+    }
+
+    ultraCleanupLostPersons() {
         for (const [id, person] of this.trackedPersons.entries()) {
             if (person.framesLost > this.maxFramesLost) {
-                if (now - this.lastLogTime > 2000) {
-                    console.log(`🗑️ Removing lost person: ID ${id} (${person.framesLost} frames lost)`);
-                    this.lastLogTime = now;
-                }
+                console.log(`🗑️ Removing lost person: ID ${id} (${person.framesLost} frames lost)`);
                 this.trackedPersons.delete(id);
                 this.facePresenceState.delete(id);
             }
         }
     }
 
-    // Các phương thức khác giữ nguyên...
-    calculateSizeSimilarity(face1, face2) {
-        const area1 = face1.width * face1.height;
-        const area2 = face2.width * face2.height;
-        const minArea = Math.min(area1, area2);
-        const maxArea = Math.max(area1, area2);
-        return maxArea > 0 ? minArea / maxArea : 0;
-    }
-
-    updatePersonData(person, face) {
-        person.x = this.lerp(person.x, face.x, 0.4); // TĂNG tốc độ cập nhật
-        person.y = this.lerp(person.y, face.y, 0.4);
-        person.width = this.lerp(person.width, face.width, 0.3);
-        person.height = this.lerp(person.height, face.height, 0.3);
-        person.lastSeen = Date.now();
-    }
-
-    createNewPerson(face) {
-        const personId = this.nextPersonId++;
-        return {
-            id: personId,
-            x: face.x,
-            y: face.y,
-            width: face.width,
-            height: face.height,
-            confidence: face.confidence,
-            firstSeen: Date.now(),
-            lastSeen: Date.now(),
-            isTracked: true,
-            framesLost: 0,
-            seen: true
-        };
-    }
-
-    lerp(start, end, factor) {
-        return start * (1 - factor) + end * factor;
-    }
-
+    // Các phương thức getter
     getCurrentPersonsCount() {
         return Array.from(this.trackedPersons.values()).filter(person =>
-            person.isTracked && person.framesLost < 8
+            person.isTracked && person.framesLost < 3
         ).length;
     }
 
@@ -1611,7 +1582,33 @@ class FastAccurateFaceTracker {
             totalAppearances: this.getTotalAppearances(),
             uniquePersons: this.getUniqueFacesCount(),
             currentPersons: this.getCurrentPersonsCount(),
-            trackedPersons: this.trackedPersons.size
+            trackedPersons: this.trackedPersons.size,
+            speed: "ultra_fast"
+        };
+    }
+
+    calculateSizeSimilarity(face1, face2) {
+        const area1 = face1.width * face1.height;
+        const area2 = face2.width * face2.height;
+        const minArea = Math.min(area1, area2);
+        const maxArea = Math.max(area1, area2);
+        return maxArea > 0 ? minArea / maxArea : 0;
+    }
+
+    createNewPerson(face) {
+        const personId = this.nextPersonId++;
+        return {
+            id: personId,
+            x: face.x,
+            y: face.y,
+            width: face.width,
+            height: face.height,
+            confidence: face.confidence,
+            firstSeen: Date.now(),
+            lastSeen: Date.now(),
+            isTracked: true,
+            framesLost: 0,
+            seen: true
         };
     }
 }
