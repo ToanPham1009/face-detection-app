@@ -130,24 +130,43 @@ class FaceDetector {
             this.drawVideoFrame();
 
             const detections = results.detections || [];
-            const formattedFaces = this.formatDetections(detections);
+
+            // THÊM: Error handling cho quá trình format detections
+            let formattedFaces = [];
+            try {
+                formattedFaces = this.formatDetections(detections);
+            } catch (formatError) {
+                console.error('❌ Error formatting detections:', formatError);
+                formattedFaces = [];
+            }
 
             if (formattedFaces.length > 0) {
-                // Tạo embeddings cho tracking
-                this.createFaceEmbeddings(formattedFaces);
+                // Tạo embeddings cho tracking với error handling
+                try {
+                    this.createFaceEmbeddings(formattedFaces);
+                } catch (embeddingError) {
+                    console.error('❌ Error creating face embeddings:', embeddingError);
+                }
 
                 if (!this.faceTracker) {
                     console.error('❌ faceTracker not available for tracking');
                     return;
                 }
 
-                const trackedFaces = this.faceTracker.update(formattedFaces);
+                // Update tracking với error handling
+                let trackedFaces = [];
+                try {
+                    trackedFaces = this.faceTracker.update(formattedFaces);
+                } catch (trackingError) {
+                    console.error('❌ Error in face tracking:', trackingError);
+                    trackedFaces = [];
+                }
+
                 this.drawFaceDetections(formattedFaces, trackedFaces);
 
                 if (this.isTracking) {
                     this.updateTrackingStats(trackedFaces);
                 } else {
-                    // Vẫn cập nhật số khuôn mặt hiện tại
                     if (this.onFaceCountUpdate) {
                         this.onFaceCountUpdate(trackedFaces.length);
                     }
@@ -227,37 +246,35 @@ class FaceDetector {
         return embedding;
     }
 
-    async extractFaceEmbeddings(faces) {
-        if (!this.video || this.video.videoWidth === 0) return;
+    extractFaceEmbedding(detection) {
+        // Sử dụng phiên bản đơn giản hóa trước để tránh lỗi
+        const landmarks = detection.landmarks || [];
+        const embedding = [
+            detection.width / 640,
+            detection.height / 480,
+            detection.x / 640,
+            detection.y / 480,
+            detection.confidence
+        ];
 
+        // Chỉ thêm landmark features nếu có và không gây lỗi
         try {
-            for (const face of faces) {
-                const tempCanvas = document.createElement('canvas');
-                const tempCtx = tempCanvas.getContext('2d');
+            if (landmarks.length >= 6) {
+                const eyeDistance = this.calculateStableEyeDistance(landmarks);
+                const noseToMouth = this.calculateNoseToMouthDistance(landmarks);
 
-                tempCanvas.width = face.width;
-                tempCanvas.height = face.height;
-
-                // Extract face region from video
-                tempCtx.drawImage(
-                    this.video,
-                    face.boundingBox.originX, face.boundingBox.originY,
-                    face.width, face.height,
-                    0, 0,
-                    face.width, face.height
-                );
-
-                const imageData = tempCtx.getImageData(0, 0, face.width, face.height);
-                const result = await this.faceLandmarker.detect(imageData);
-
-                if (result.faceLandmarks && result.faceLandmarks.length > 0) {
-                    face.embedding = this.extractEmbeddingFromLandmarks(result.faceLandmarks[0]);
-                }
+                embedding.push(eyeDistance);
+                embedding.push(noseToMouth);
+                embedding.push(detection.width / detection.height);
             }
         } catch (error) {
-            console.error('❌ Error extracting face embeddings:', error);
+            console.warn('⚠️ Error extracting landmark features:', error);
+            // Vẫn trả về embedding cơ bản nếu có lỗi
         }
+
+        return embedding;
     }
+
 
     createSimpleEmbeddings(faces) {
         faces.forEach(face => {
@@ -518,7 +535,7 @@ class FaceDetector {
         this.ctx.fillText(infoText, start[0], start[1] - 8);
 
         this.ctx.restore();
-        
+
         // Thêm thông tin counting
         if (trackedFace && this.isTracking) {
             const appearanceCount = this.faceTracker.appearanceCounts.get(trackedFace.id) || 1;
@@ -1273,39 +1290,41 @@ class FaceDetector {
 
 class ProfessionalFaceTracker {
     constructor() {
-        // Core tracking data
-        this.trackedPersons = new Map(); // personId -> PersonData
+        this.faces = new Map();
         this.nextPersonId = 1;
+        this.maxFramesLost = 30;
 
-        // Face detection history
-        this.detectionHistory = new Map(); // personId -> detection records
+        // Tracking thresholds
+        this.positionThreshold = 0.6;
+        this.recognitionThreshold = 0.7;
 
-        // Appearance counting
-        this.appearanceCounts = new Map(); // personId -> count
-        this.presenceStatus = new Map(); // personId -> boolean (currently in frame)
+        this.positionHistory = new Map();
+        this.smoothingFactor = 0.3;
 
-        // Kalman Filter simulation (simplified)
-        this.predictedPositions = new Map(); // personId -> {x, y}
+        // Appearance tracking
+        this.faceAppearances = new Map(); // personId -> count
+        this.faceSignatures = new Map(); // personId -> signature
+        this.lastCountTime = new Map(); // personId -> last count timestamp
+        this.presenceStatus = new Map(); // personId -> boolean
 
         // Settings
-        this.trackingConfig = {
-            maxFramesLost: 30,
-            similarityThreshold: 0.85,
-            distanceThreshold: 100,
-            minPresenceTime: 2000, // 2 seconds minimum presence
-            reentryCooldown: 3000  // 3 seconds before counting re-entry
-        };
+        this.minCountInterval = 2000;
+        this.signatureStabilityThreshold = 0.8;
+
+        // Debug
+        this.lastSimilarityLog = 0;
 
         console.log('🎯 ProfessionalFaceTracker initialized');
     }
 
     resetCompletely() {
-        this.trackedPersons.clear();
+        this.faces.clear();
         this.nextPersonId = 1;
-        this.detectionHistory.clear();
-        this.appearanceCounts.clear();
+        this.positionHistory.clear();
+        this.faceAppearances.clear();
+        this.faceSignatures.clear();
+        this.lastCountTime.clear();
         this.presenceStatus.clear();
-        this.predictedPositions.clear();
         console.log('🔄 Professional tracker reset completely');
     }
 
@@ -1322,30 +1341,119 @@ class ProfessionalFaceTracker {
     /**
      * Core tracking method - implements the 4-step process
      */
-    update(currentDetections) {
+    update(currentFaces) {
+        // Đánh dấu tất cả faces hiện tại là không seen
+        for (const face of this.faces.values()) {
+            face.seen = false;
+            face.framesLost++;
+        }
+
         const results = [];
+        const usedMatches = new Set();
 
-        // Step 1: Process current detections
-        const currentFaces = this.processDetections(currentDetections);
+        // Giai đoạn 1: Match với faces đang được track
+        for (const currentFace of currentFaces) {
+            let bestMatch = null;
+            let bestScore = this.positionThreshold;
+            let bestMatchId = null;
 
-        // Step 2: Predict positions for existing persons
-        this.predictPositions();
+            // Tìm match tốt nhất
+            for (const [id, knownFace] of this.faces.entries()) {
+                if (knownFace.seen || usedMatches.has(id)) continue;
 
-        // Step 3: Association/Tracking - Match detections to existing persons
-        const matches = this.associateDetections(currentFaces);
+                const score = this.calculateMatchScore(currentFace, knownFace);
 
-        // Step 4: Update tracking and count appearances
-        this.updateTracking(matches, currentFaces);
+                if (score > bestScore) {
+                    bestScore = score;
+                    bestMatch = knownFace;
+                    bestMatchId = id;
+                }
+            }
 
-        // Return current tracked persons for drawing
-        return Array.from(this.trackedPersons.values()).filter(person =>
-            person.isCurrentlyTracked
-        );
+            if (bestMatch && bestMatchId) {
+                // Match found - update existing face
+                this.updateFaceWithSmoothing(bestMatch, currentFace);
+                bestMatch.seen = true;
+                bestMatch.framesLost = 0;
+                bestMatch.isTracked = true;
+                bestMatch.confidence = currentFace.confidence;
+                bestMatch.lastSeen = Date.now();
+
+                // Update embedding với smoothing mạnh hơn
+                if (currentFace.embedding && bestMatch.embedding) {
+                    for (let i = 0; i < bestMatch.embedding.length; i++) {
+                        bestMatch.embedding[i] = this.lerp(
+                            bestMatch.embedding[i],
+                            currentFace.embedding[i],
+                            0.1 // Giảm smoothing để ổn định hơn
+                        );
+                    }
+                }
+
+                usedMatches.add(bestMatchId);
+
+                // Xử lý đếm - CHỈ đếm khi đủ điều kiện
+                this.handleFaceCounting(bestMatch);
+
+                results.push({
+                    id: bestMatchId,
+                    isNew: false,
+                    x: bestMatch.x,
+                    y: bestMatch.y,
+                    width: bestMatch.width,
+                    height: bestMatch.height,
+                    confidence: bestMatch.confidence
+                });
+
+            } else {
+                // Tạo face mới
+                const newFace = this.createNewFace(currentFace);
+                this.faces.set(newFace.id, newFace);
+
+                // Đếm ngay lần đầu tiên xuất hiện
+                this.handleFirstAppearance(newFace);
+
+                results.push({
+                    id: newFace.id,
+                    isNew: true,
+                    x: currentFace.x,
+                    y: currentFace.y,
+                    width: currentFace.width,
+                    height: currentFace.height,
+                    confidence: currentFace.confidence
+                });
+
+                console.log(`🎉 New person created: ID ${newFace.id}`);
+            }
+        }
+
+        // Dọn dẹp faces mất tích
+        this.cleanupLostFaces();
+
+        return results;
     }
 
     /**
      * Step 1: Process raw detections into standardized format
      */
+    processDetections(detections) {
+        return detections.map((detection, index) => {
+            // Create face embedding (feature vector)
+            const embedding = this.extractFaceEmbedding(detection);
+
+            return {
+                id: `det_${Date.now()}_${index}`,
+                x: detection.x,
+                y: detection.y,
+                width: detection.width,
+                height: detection.height,
+                confidence: detection.confidence,
+                embedding: embedding,
+                timestamp: Date.now()
+            };
+        });
+    } 
+    
     processDetections(detections) {
         return detections.map((detection, index) => {
             // Create face embedding (feature vector)
@@ -1435,7 +1543,12 @@ class ProfessionalFaceTracker {
                 matches.set(face.id, bestPersonId);
                 usedDetections.add(face.id);
                 usedPersons.add(bestPersonId);
-                console.log(`🔍 Feature match: Person ${bestPersonId} (similarity: ${bestSimilarity.toFixed(3)})`);
+
+                // CHỈ log khi có sự thay đổi đáng kể trong similarity
+                if (!this.lastSimilarityLog || Date.now() - this.lastSimilarityLog > 2000) {
+                    console.log(`🔍 Feature match: Person ${bestPersonId} (similarity: ${bestSimilarity.toFixed(3)})`);
+                    this.lastSimilarityLog = Date.now();
+                }
             }
         }
 
@@ -1636,12 +1749,6 @@ class ProfessionalFaceTracker {
 
         const similarity = norm1 > 0 && norm2 > 0 ? dotProduct / (norm1 * norm2) : 0;
 
-        // CHỈ log khi similarity thay đổi đáng kể
-        if (similarity > 0.9 && (!this.lastSimilarity || Math.abs(similarity - this.lastSimilarity) > 0.01)) {
-            console.log(`🔍 Feature match: Person ${bestMatchId} (similarity: ${similarity.toFixed(3)})`);
-            this.lastSimilarity = similarity;
-        }
-
         return similarity;
     }
 
@@ -1681,6 +1788,20 @@ class ProfessionalFaceTracker {
         }
 
         return embedding;
+    }
+
+    calculateNoseToMouthDistance(landmarks) {
+        if (landmarks.length < 6) return 0;
+
+        const nose = landmarks[4];    // Nose tip
+        const mouth = landmarks[5];   // Mouth center
+
+        const distance = Math.sqrt(
+            Math.pow(nose.x - mouth.x, 2) +
+            Math.pow(nose.y - mouth.y, 2)
+        );
+
+        return distance;
     }
 
     calculateStableEyeDistance(landmarks) {
