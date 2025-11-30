@@ -938,9 +938,16 @@ class FaceDetector {
         this.ctx.font = 'bold 14px Arial';
         this.ctx.textAlign = 'left';
 
-        // SỬA: Sử dụng getCurrentPersonsCount() thay vì getTrackedFacesCount()
-        const currentFaces = this.faceTracker.getCurrentPersonsCount ?
-            this.faceTracker.getCurrentPersonsCount() : 0;
+        // SỬA: Thêm error handling cho phương thức getCurrentPersonsCount
+        let currentFaces = 0;
+        try {
+            if (this.faceTracker && typeof this.faceTracker.getCurrentPersonsCount === 'function') {
+                currentFaces = this.faceTracker.getCurrentPersonsCount();
+            }
+        } catch (error) {
+            console.warn('⚠️ Error getting current persons count:', error);
+            currentFaces = 0;
+        }
 
         if (this.isTracking) {
             this.ctx.fillText('🎭 Đang Theo Dõi (Professional)', 20, 30);
@@ -1218,13 +1225,27 @@ class FaceDetector {
         if (!this.isTracking) return;
 
         try {
-            // SỬA: Sử dụng getCurrentPersonsCount() và getTotalAppearances()
-            const currentFaceCount = this.faceTracker.getCurrentPersonsCount ?
-                this.faceTracker.getCurrentPersonsCount() : trackedFaces.length;
+            // SỬA: Thêm error handling toàn diện
+            let currentFaceCount = trackedFaces.length;
+            let totalAppearances = this.totalFacesCount;
 
-            // Lấy tổng số lượt xuất hiện từ tracker
-            this.totalFacesCount = this.faceTracker.getTotalAppearances ?
-                this.faceTracker.getTotalAppearances() : this.totalFacesCount;
+            try {
+                if (this.faceTracker && typeof this.faceTracker.getCurrentPersonsCount === 'function') {
+                    currentFaceCount = this.faceTracker.getCurrentPersonsCount();
+                }
+            } catch (error) {
+                console.warn('⚠️ Error getting current persons count:', error);
+            }
+
+            try {
+                if (this.faceTracker && typeof this.faceTracker.getTotalAppearances === 'function') {
+                    totalAppearances = this.faceTracker.getTotalAppearances();
+                }
+            } catch (error) {
+                console.warn('⚠️ Error getting total appearances:', error);
+            }
+
+            this.totalFacesCount = totalAppearances;
 
             // Cập nhật callback
             if (this.onFaceCountUpdate) {
@@ -1247,34 +1268,6 @@ class FaceDetector {
         }
     }
 
-    // Thêm vào class FaceDetector trong faceDetection.js
-    debugVideoState() {
-        console.log('🐛 DEBUG VIDEO STATE:');
-        console.log('- Camera on:', this.isCameraOn);
-        console.log('- Tracking:', this.isTracking);
-        console.log('- Stream:', this.stream ? 'Active' : 'None');
-        console.log('- Video readyState:', this.video?.readyState);
-        console.log('- Video width:', this.video?.videoWidth);
-        console.log('- Video height:', this.video?.videoHeight);
-        console.log('- Canvas width:', this.canvas?.width);
-        console.log('- Canvas height:', this.canvas?.height);
-        console.log('- Detection running:', this.isDetectionRunning);
-        console.log('- Models loaded:', this.modelsLoaded);
-
-        // Kiểm tra xem video có đang phát không
-        if (this.video) {
-            console.log('- Video paused:', this.video.paused);
-            console.log('- Video currentTime:', this.video.currentTime);
-            console.log('- Video duration:', this.video.duration);
-        }
-
-        // Force redraw nếu camera đang chạy
-        if (this.isCameraOn) {
-            this.drawVideoFrame();
-            this.drawStatusInfo();
-            console.log('🔄 Forced redraw completed');
-        }
-    }
     // Thêm vào class FaceDetector
     getCameraState() {
         return {
@@ -1290,16 +1283,9 @@ class FaceDetector {
 
 class ProfessionalFaceTracker {
     constructor() {
-        this.faces = new Map();
+        this.trackedPersons = new Map(); // SỬA: Đổi từ faces sang trackedPersons
         this.nextPersonId = 1;
         this.maxFramesLost = 30;
-
-        // Tracking thresholds
-        this.positionThreshold = 0.6;
-        this.recognitionThreshold = 0.7;
-
-        this.positionHistory = new Map();
-        this.smoothingFactor = 0.3;
 
         // Appearance tracking
         this.faceAppearances = new Map(); // personId -> count
@@ -1311,16 +1297,27 @@ class ProfessionalFaceTracker {
         this.minCountInterval = 2000;
         this.signatureStabilityThreshold = 0.8;
 
-        // Debug
-        this.lastSimilarityLog = 0;
-
         console.log('🎯 ProfessionalFaceTracker initialized');
     }
 
+    // PHIÊN BẢN ĐƠN GIẢN - KHÔNG GÂY LỖI
+    extractFaceEmbedding(detection) {
+        // Chỉ sử dụng các features cơ bản, không dùng landmarks
+        const embedding = [
+            detection.width / 640,    // Normalized width
+            detection.height / 480,   // Normalized height  
+            detection.x / 640,        // Normalized x position
+            detection.y / 480,        // Normalized y position
+            detection.confidence,     // Detection confidence
+            detection.width / detection.height // Aspect ratio
+        ];
+
+        return embedding;
+    }
+
     resetCompletely() {
-        this.faces.clear();
+        this.trackedPersons.clear();
         this.nextPersonId = 1;
-        this.positionHistory.clear();
         this.faceAppearances.clear();
         this.faceSignatures.clear();
         this.lastCountTime.clear();
@@ -1328,71 +1325,43 @@ class ProfessionalFaceTracker {
         console.log('🔄 Professional tracker reset completely');
     }
 
-    getPerformanceInfo() {
-        return {
-            fps: 15, // Fixed FPS
-            currentFaces: this.getCurrentPersonsCount(),
-            totalAppearances: this.getTotalAppearances(),
-            uniquePersons: this.getUniqueFacesCount(),
-            trackedPersons: this.trackedPersons.size
-        };
-    }
-
-    /**
-     * Core tracking method - implements the 4-step process
-     */
     update(currentFaces) {
-        // Đánh dấu tất cả faces hiện tại là không seen
-        for (const face of this.faces.values()) {
-            face.seen = false;
-            face.framesLost++;
-        }
-
         const results = [];
         const usedMatches = new Set();
 
-        // Giai đoạn 1: Match với faces đang được track
+        // Đánh dấu tất cả persons hiện tại là không seen
+        for (const person of this.trackedPersons.values()) {
+            person.seen = false;
+            person.framesLost++;
+        }
+
+        // Giai đoạn 1: Match với persons đang được track
         for (const currentFace of currentFaces) {
             let bestMatch = null;
-            let bestScore = this.positionThreshold;
+            let bestScore = 0.6; // Ngưỡng thấp hơn
             let bestMatchId = null;
 
             // Tìm match tốt nhất
-            for (const [id, knownFace] of this.faces.entries()) {
-                if (knownFace.seen || usedMatches.has(id)) continue;
+            for (const [id, knownPerson] of this.trackedPersons.entries()) {
+                if (knownPerson.seen || usedMatches.has(id)) continue;
 
-                const score = this.calculateMatchScore(currentFace, knownFace);
-
+                const score = this.calculateMatchScore(currentFace, knownPerson);
                 if (score > bestScore) {
                     bestScore = score;
-                    bestMatch = knownFace;
+                    bestMatch = knownPerson;
                     bestMatchId = id;
                 }
             }
 
             if (bestMatch && bestMatchId) {
-                // Match found - update existing face
-                this.updateFaceWithSmoothing(bestMatch, currentFace);
+                // Match found - update existing person
+                this.updatePersonData(bestMatch, currentFace);
                 bestMatch.seen = true;
                 bestMatch.framesLost = 0;
                 bestMatch.isTracked = true;
-                bestMatch.confidence = currentFace.confidence;
-                bestMatch.lastSeen = Date.now();
-
-                // Update embedding với smoothing mạnh hơn
-                if (currentFace.embedding && bestMatch.embedding) {
-                    for (let i = 0; i < bestMatch.embedding.length; i++) {
-                        bestMatch.embedding[i] = this.lerp(
-                            bestMatch.embedding[i],
-                            currentFace.embedding[i],
-                            0.1 // Giảm smoothing để ổn định hơn
-                        );
-                    }
-                }
-
                 usedMatches.add(bestMatchId);
 
-                // Xử lý đếm - CHỈ đếm khi đủ điều kiện
+                // Xử lý đếm
                 this.handleFaceCounting(bestMatch);
 
                 results.push({
@@ -1406,15 +1375,15 @@ class ProfessionalFaceTracker {
                 });
 
             } else {
-                // Tạo face mới
-                const newFace = this.createNewFace(currentFace);
-                this.faces.set(newFace.id, newFace);
+                // Tạo person mới
+                const newPerson = this.createNewPerson(currentFace);
+                this.trackedPersons.set(newPerson.id, newPerson);
 
                 // Đếm ngay lần đầu tiên xuất hiện
-                this.handleFirstAppearance(newFace);
+                this.handleFirstAppearance(newPerson);
 
                 results.push({
-                    id: newFace.id,
+                    id: newPerson.id,
                     isNew: true,
                     x: currentFace.x,
                     y: currentFace.y,
@@ -1423,490 +1392,191 @@ class ProfessionalFaceTracker {
                     confidence: currentFace.confidence
                 });
 
-                console.log(`🎉 New person created: ID ${newFace.id}`);
+                console.log(`🎉 New person created: ID ${newPerson.id}`);
             }
         }
 
-        // Dọn dẹp faces mất tích
-        this.cleanupLostFaces();
+        // Dọn dẹp persons mất tích
+        this.cleanupLostPersons();
 
         return results;
     }
 
-    /**
-     * Step 1: Process raw detections into standardized format
-     */
-    processDetections(detections) {
-        return detections.map((detection, index) => {
-            // Create face embedding (feature vector)
-            const embedding = this.extractFaceEmbedding(detection);
+    calculateMatchScore(currentFace, knownPerson) {
+        // Tính khoảng cách đơn giản
+        const distance = Math.sqrt(
+            Math.pow(currentFace.x - knownPerson.x, 2) +
+            Math.pow(currentFace.y - knownPerson.y, 2)
+        );
 
-            return {
-                id: `det_${Date.now()}_${index}`,
-                x: detection.x,
-                y: detection.y,
-                width: detection.width,
-                height: detection.height,
-                confidence: detection.confidence,
-                embedding: embedding,
-                timestamp: Date.now()
-            };
-        });
-    } 
-    
-    processDetections(detections) {
-        return detections.map((detection, index) => {
-            // Create face embedding (feature vector)
-            const embedding = this.extractFaceEmbedding(detection);
+        // Tính similarity về kích thước
+        const sizeSimilarity = this.calculateSizeSimilarity(currentFace, knownPerson);
 
-            return {
-                id: `det_${Date.now()}_${index}`,
-                x: detection.x,
-                y: detection.y,
-                width: detection.width,
-                height: detection.height,
-                confidence: detection.confidence,
-                embedding: embedding,
-                timestamp: Date.now()
-            };
-        });
+        // Chuyển đổi distance thành score (khoảng cách càng nhỏ, score càng cao)
+        const distanceScore = Math.max(0, 1 - distance / 100);
+
+        return (distanceScore * 0.7) + (sizeSimilarity * 0.3);
     }
 
-    /**
-     * Step 2: Predict next positions (simplified Kalman Filter)
-     */
-    predictPositions() {
-        for (const [personId, person] of this.trackedPersons) {
-            if (person.lastPosition) {
-                // Simple velocity-based prediction
-                const velocity = person.velocity || { x: 0, y: 0 };
-                this.predictedPositions.set(personId, {
-                    x: person.lastPosition.x + velocity.x,
-                    y: person.lastPosition.y + velocity.y
-                });
-            }
-        }
+    calculateSizeSimilarity(face1, face2) {
+        const area1 = face1.width * face1.height;
+        const area2 = face2.width * face2.height;
+        const minArea = Math.min(area1, area2);
+        const maxArea = Math.max(area1, area2);
+        return maxArea > 0 ? minArea / maxArea : 0;
     }
 
-    /**
-     * Step 3: Association - Match detections to existing persons
-     */
-    associateDetections(currentFaces) {
-        const matches = new Map();
-        const usedDetections = new Set();
-        const usedPersons = new Set();
+    updatePersonData(person, face) {
+        // Cập nhật vị trí với smoothing
+        person.x = this.lerp(person.x, face.x, 0.3);
+        person.y = this.lerp(person.y, face.y, 0.3);
+        person.width = this.lerp(person.width, face.width, 0.2);
+        person.height = this.lerp(person.height, face.height, 0.2);
+        person.lastSeen = Date.now();
+        person.detectionCount = (person.detectionCount || 0) + 1;
 
-        // Phase 1: Motion-based matching (high priority)
-        for (const face of currentFaces) {
-            let bestPersonId = null;
-            let bestScore = 0;
-
-            for (const [personId, person] of this.trackedPersons) {
-                if (usedPersons.has(personId)) continue;
-
-                const motionScore = this.calculateMotionScore(face, person);
-                if (motionScore > bestScore && motionScore > 0.7) {
-                    bestScore = motionScore;
-                    bestPersonId = personId;
-                }
-            }
-
-            if (bestPersonId) {
-                matches.set(face.id, bestPersonId);
-                usedDetections.add(face.id);
-                usedPersons.add(bestPersonId);
-            }
-        }
-
-        // Phase 2: Feature-based matching (for occlusions/re-entries)
-        for (const face of currentFaces) {
-            if (usedDetections.has(face.id)) continue;
-
-            let bestPersonId = null;
-            let bestSimilarity = this.trackingConfig.similarityThreshold;
-
-            for (const [personId, person] of this.trackedPersons) {
-                if (usedPersons.has(personId)) continue;
-
-                const similarity = this.calculateFeatureSimilarity(
-                    face.embedding,
-                    person.embedding
-                );
-
-                if (similarity > bestSimilarity) {
-                    bestSimilarity = similarity;
-                    bestPersonId = personId;
-                }
-            }
-
-            if (bestPersonId) {
-                matches.set(face.id, bestPersonId);
-                usedDetections.add(face.id);
-                usedPersons.add(bestPersonId);
-
-                // CHỈ log khi có sự thay đổi đáng kể trong similarity
-                if (!this.lastSimilarityLog || Date.now() - this.lastSimilarityLog > 2000) {
-                    console.log(`🔍 Feature match: Person ${bestPersonId} (similarity: ${bestSimilarity.toFixed(3)})`);
-                    this.lastSimilarityLog = Date.now();
-                }
-            }
-        }
-
-        // Phase 3: Create new persons for unmatched detections
-        for (const face of currentFaces) {
-            if (!usedDetections.has(face.id)) {
-                const newPersonId = this.createNewPerson(face);
-                matches.set(face.id, newPersonId);
-                console.log(`🎉 New person created: ID ${newPersonId}`);
-            }
-        }
-
-        return matches;
-    }
-
-    /**
-     * Step 4: Update tracking and handle appearance counting
-     */
-    updateTracking(matches, currentFaces) {
-        const now = Date.now();
-        const currentlyPresent = new Set();
-
-        // Update matched persons
-        for (const [detectionId, personId] of matches) {
-            const face = currentFaces.find(f => f.id === detectionId);
-            const person = this.trackedPersons.get(personId);
-
-            if (face && person) {
-                // Update person data
-                this.updatePersonData(person, face);
-                currentlyPresent.add(personId);
-
-                // Handle appearance counting
-                this.handleAppearanceCounting(personId, now);
-            }
-        }
-
-        // Handle persons that left the frame
-        this.handleDepartures(currentlyPresent, now);
-    }
-
-    /**
-     * Handle the core appearance counting logic
-     */
-    handleAppearanceCounting(personId, currentTime) {
-        const person = this.trackedPersons.get(personId);
-        if (!person) return;
-
-        const wasPresent = this.presenceStatus.get(personId) || false;
-
-        if (!wasPresent) {
-            // Person just entered the frame
-            const lastExitTime = person.lastExitTime || 0;
-            const timeSinceLastExit = currentTime - lastExitTime;
-
-            // Only count if they've been gone long enough (re-entry)
-            if (timeSinceLastExit > this.trackingConfig.reentryCooldown) {
-                const currentCount = this.appearanceCounts.get(personId) || 0;
-                this.appearanceCounts.set(personId, currentCount + 1);
-
-                console.log(`✅ COUNT: Person ${personId} appearance #${currentCount + 1}`);
-
-                // Record this appearance
-                this.recordAppearance(personId, currentTime);
-            }
-
-            this.presenceStatus.set(personId, true);
-            person.lastEntryTime = currentTime;
-        }
-
-        // Update continuous presence
-        person.lastSeenTime = currentTime;
-        this.presenceStatus.set(personId, true);
-    }
-
-    /**
-     * Handle persons leaving the frame
-     */
-    handleDepartures(currentlyPresent, currentTime) {
-        for (const [personId, person] of this.trackedPersons) {
-            if (!currentlyPresent.has(personId)) {
-                const wasPresent = this.presenceStatus.get(personId);
-
-                if (wasPresent) {
-                    // Person just left the frame
-                    this.presenceStatus.set(personId, false);
-                    person.lastExitTime = currentTime;
-                    person.framesLost = (person.framesLost || 0) + 1;
-
-                    console.log(`🚪 Person ${personId} left frame`);
-
-                    // Remove if lost for too long
-                    if (person.framesLost > this.trackingConfig.maxFramesLost) {
-                        console.log(`🗑️ Removing lost person: ID ${personId}`);
-                        this.trackedPersons.delete(personId);
-                        this.presenceStatus.delete(personId);
-                        this.predictedPositions.delete(personId);
-                    }
-                }
+        // Cập nhật embedding
+        if (face.embedding) {
+            if (!person.embedding) {
+                person.embedding = face.embedding;
             } else {
-                // Reset frames lost counter
-                person.framesLost = 0;
+                // Smooth embedding update
+                for (let i = 0; i < person.embedding.length; i++) {
+                    person.embedding[i] = this.lerp(
+                        person.embedding[i],
+                        face.embedding[i],
+                        0.1
+                    );
+                }
             }
         }
     }
 
-    /**
-     * Create a new person entry
-     */
     createNewPerson(face) {
         const personId = this.nextPersonId++;
 
         const personData = {
             id: personId,
+            x: face.x,
+            y: face.y,
+            width: face.width,
+            height: face.height,
+            confidence: face.confidence,
             embedding: face.embedding,
             firstSeen: Date.now(),
-            lastSeenTime: Date.now(),
-            lastEntryTime: Date.now(),
-            detectionCount: 0,
-            isCurrentlyTracked: true,
-            lastPosition: { x: face.x, y: face.y },
-            velocity: { x: 0, y: 0 }
+            lastSeen: Date.now(),
+            detectionCount: 1,
+            isTracked: true,
+            framesLost: 0
         };
 
-        this.trackedPersons.set(personId, personData);
-        this.appearanceCounts.set(personId, 1); // Count first appearance immediately
-        this.presenceStatus.set(personId, true);
-
-        console.log(`✅ FIRST COUNT: Person ${personId} - Total: 1`);
-
-        return personId;
+        return personData;
     }
 
-    /**
-     * Update existing person data
-     */
-    updatePersonData(person, face) {
-        // Update position with simple velocity calculation
-        if (person.lastPosition) {
-            const dt = 1; // assuming 1 frame
-            person.velocity = {
-                x: (face.x - person.lastPosition.x) / dt,
-                y: (face.y - person.lastPosition.y) / dt
-            };
-        }
+    handleFirstAppearance(person) {
+        const now = Date.now();
 
-        person.lastPosition = { x: face.x, y: face.y };
-        person.lastSeenTime = Date.now();
-        person.detectionCount = (person.detectionCount || 0) + 1;
-        person.isCurrentlyTracked = true;
+        // Lưu signature cho person này
+        const signature = this.getFaceSignature(person);
+        this.faceSignatures.set(person.id, signature);
 
-        // Update embedding with smoothing
-        if (face.embedding && person.embedding) {
-            person.embedding = this.updateEmbedding(person.embedding, face.embedding);
-        }
+        // Đếm ngay lần đầu
+        this.faceAppearances.set(person.id, 1);
+        this.lastCountTime.set(person.id, now);
+        this.presenceStatus.set(person.id, true);
+
+        console.log(`✅ FIRST COUNT: Person ${person.id} - Total: 1`);
     }
 
-    /**
-     * Motion-based scoring (simplified)
-     */
-    calculateMotionScore(face, person) {
-        if (!person.lastPosition) return 0;
+    handleFaceCounting(person) {
+        const now = Date.now();
+        const lastCount = this.lastCountTime.get(person.id) || 0;
 
-        const predicted = this.predictedPositions.get(person.id) || person.lastPosition;
-        const distance = Math.sqrt(
-            Math.pow(face.x - predicted.x, 2) +
-            Math.pow(face.y - predicted.y, 2)
+        // Chỉ đếm nếu đã qua đủ thời gian (2 giây)
+        if (now - lastCount < this.minCountInterval) {
+            return;
+        }
+
+        // Đếm và cập nhật
+        const currentCount = this.faceAppearances.get(person.id) || 0;
+        this.faceAppearances.set(person.id, currentCount + 1);
+        this.lastCountTime.set(person.id, now);
+
+        console.log(`🔄 RE-COUNT: Person ${person.id} - Total: ${currentCount + 1}`);
+    }
+
+    getFaceSignature(person) {
+        if (!person.embedding) {
+            return `pos_${Math.round(person.x / 20)}_${Math.round(person.y / 20)}`;
+        }
+
+        // Sử dụng 3 giá trị embedding đầu tiên, làm tròn thô
+        const significantValues = person.embedding.slice(0, 3).map(val =>
+            Math.round(val * 5) / 5
         );
 
-        // Convert distance to score (closer = higher score)
-        const maxDistance = this.trackingConfig.distanceThreshold;
-        const distanceScore = Math.max(0, 1 - distance / maxDistance);
-
-        // Size similarity
-        const sizeScore = this.calculateSizeSimilarity(face, person);
-
-        return (distanceScore * 0.7) + (sizeScore * 0.3);
+        return `emb_${significantValues.join('_')}`;
     }
 
-    /**
-     * Feature-based similarity calculation
-     */
-    calculateFeatureSimilarity(embedding1, embedding2) {
-        if (!embedding1 || !embedding2) return 0;
-
-        let dotProduct = 0;
-        let norm1 = 0;
-        let norm2 = 0;
-
-        for (let i = 0; i < Math.min(embedding1.length, embedding2.length); i++) {
-            dotProduct += embedding1[i] * embedding2[i];
-            norm1 += embedding1[i] * embedding1[i];
-            norm2 += embedding2[i] * embedding2[i];
+    cleanupLostPersons() {
+        for (const [id, person] of this.trackedPersons.entries()) {
+            if (person.framesLost > this.maxFramesLost) {
+                console.log(`🗑️ Removing lost person: ID ${id}`);
+                this.trackedPersons.delete(id);
+                // Giữ lại count data
+            }
         }
-
-        norm1 = Math.sqrt(norm1);
-        norm2 = Math.sqrt(norm2);
-
-        const similarity = norm1 > 0 && norm2 > 0 ? dotProduct / (norm1 * norm2) : 0;
-
-        return similarity;
     }
 
-    /**
-     * Utility methods
-     */
-    calculateSizeSimilarity(face, person) {
-        const currentArea = face.width * face.height;
-        const personArea = person.lastPosition ? (person.lastPosition.width * person.lastPosition.height) : currentArea;
-
-        const minArea = Math.min(currentArea, personArea);
-        const maxArea = Math.max(currentArea, personArea);
-
-        return maxArea > 0 ? minArea / maxArea : 0;
+    lerp(start, end, factor) {
+        return start * (1 - factor) + end * factor;
     }
 
-    extractFaceEmbedding(detection) {
-        // Sử dụng ít features hơn để tăng tốc độ
-        const landmarks = detection.landmarks || [];
-        const embedding = [
-            detection.width / 640,
-            detection.height / 480,
-            detection.x / 640,
-            detection.y / 480,
-            detection.confidence
-        ];
-
-        // Chỉ thêm landmark features nếu thực sự cần
-        if (landmarks.length >= 6) {
-            // Tính các features ổn định
-            const eyeDistance = this.calculateStableEyeDistance(landmarks);
-            const noseToMouth = this.calculateNoseToMouthDistance(landmarks);
-
-            embedding.push(eyeDistance);
-            embedding.push(noseToMouth);
-            embedding.push(detection.width / detection.height);
-        }
-
-        return embedding;
-    }
-
-    calculateNoseToMouthDistance(landmarks) {
-        if (landmarks.length < 6) return 0;
-
-        const nose = landmarks[4];    // Nose tip
-        const mouth = landmarks[5];   // Mouth center
-
-        const distance = Math.sqrt(
-            Math.pow(nose.x - mouth.x, 2) +
-            Math.pow(nose.y - mouth.y, 2)
-        );
-
-        return distance;
-    }
-
-    calculateStableEyeDistance(landmarks) {
-        if (landmarks.length < 4) return 0;
-
-        const leftEye = landmarks[0];
-        const rightEye = landmarks[2];
-        const distance = Math.sqrt(
-            Math.pow(leftEye.x - rightEye.x, 2) +
-            Math.pow(leftEye.y - rightEye.y, 2)
-        );
-
-        return distance;
-    }
-
-    updateEmbedding(oldEmbedding, newEmbedding) {
-        // Heavy smoothing for stability
-        const smoothingFactor = 0.1;
-        const updated = [...oldEmbedding];
-
-        for (let i = 0; i < Math.min(oldEmbedding.length, newEmbedding.length); i++) {
-            updated[i] = oldEmbedding[i] * (1 - smoothingFactor) + newEmbedding[i] * smoothingFactor;
-        }
-
-        return updated;
-    }
-
-    recordAppearance(personId, timestamp) {
-        if (!this.detectionHistory.has(personId)) {
-            this.detectionHistory.set(personId, []);
-        }
-
-        this.detectionHistory.get(personId).push({
-            timestamp,
-            count: this.appearanceCounts.get(personId)
-        });
-    }
-
-    /**
-     * Public interface methods
-     */
-    getTotalAppearances() {
-        let total = 0;
-        for (const count of this.appearanceCounts.values()) {
-            total += count;
-        }
-        return total;
-    }
-
-    getUniquePersonsCount() {
-        return this.appearanceCounts.size;
+    // CÁC PHƯƠNG THỨC GETTER ĐỂ TRÁNH LỖI
+    getTrackedFacesCount() {
+        return Array.from(this.trackedPersons.values()).filter(person =>
+            person.isTracked
+        ).length;
     }
 
     getCurrentPersonsCount() {
-        return Array.from(this.presenceStatus.values()).filter(Boolean).length;
+        return Array.from(this.trackedPersons.values()).filter(person =>
+            person.isTracked
+        ).length;
+    }
+
+    getUniqueFacesCount() {
+        return this.faceAppearances.size;
+    }
+
+    getTotalAppearances() {
+        let total = 0;
+        for (const count of this.faceAppearances.values()) {
+            total += count;
+        }
+        return total;
     }
 
     getTrackingStats() {
         return {
             totalAppearances: this.getTotalAppearances(),
-            uniquePersons: this.getUniquePersonsCount(),
+            uniquePersons: this.getUniqueFacesCount(),
             currentPersons: this.getCurrentPersonsCount(),
             trackedPersons: this.trackedPersons.size
         };
     }
 
-    /**
-     * Get number of currently tracked faces (for compatibility)
-     */
-    getTrackedFacesCount() {
-        return Array.from(this.trackedPersons.values()).filter(person =>
-            person.isCurrentlyTracked
-        ).length;
+    getPerformanceInfo() {
+        return {
+            fps: 15,
+            currentFaces: this.getCurrentPersonsCount(),
+            totalAppearances: this.getTotalAppearances(),
+            uniquePersons: this.getUniqueFacesCount(),
+            trackedPersons: this.trackedPersons.size
+        };
     }
 
-    /**
-     * Get number of unique persons that have been counted
-     */
-    getUniqueFacesCount() {
-        return this.appearanceCounts.size;
-    }
-
-    /**
-     * Get current active persons in frame
-     */
-    getCurrentPersonsCount() {
-        return Array.from(this.trackedPersons.values()).filter(person =>
-            person.isCurrentlyTracked
-        ).length;
-    }
-
-    /**
-     * Get total appearances across all persons
-     */
-    getTotalAppearances() {
-        let total = 0;
-        for (const count of this.appearanceCounts.values()) {
-            total += count;
-        }
-        return total;
-    }
-
-    /**
-     * Debug method to show all tracked persons
-     */
+    // DEBUG METHODS
     debugFaceTracking() {
         console.log('🔍 PROFESSIONAL TRACKER DEBUG:');
         console.log('- Tracked persons:', this.trackedPersons.size);
@@ -1914,36 +1584,12 @@ class ProfessionalFaceTracker {
         console.log('- Unique persons counted:', this.getUniqueFacesCount());
         console.log('- Total appearances:', this.getTotalAppearances());
 
-        console.log('- Tracked persons details:');
-        for (const [id, person] of this.trackedPersons) {
-            console.log(`  Person ${id}:`, {
-                isCurrentlyTracked: person.isCurrentlyTracked,
-                appearanceCount: this.appearanceCounts.get(id) || 0,
-                lastSeen: new Date(person.lastSeenTime).toLocaleTimeString(),
-                detectionCount: person.detectionCount
-            });
-        }
-
-        console.log('- Appearance counts:', Array.from(this.appearanceCounts.entries()));
+        console.log('- Appearance counts:', Array.from(this.faceAppearances.entries()));
     }
 
-    /**
-     * Debug method for face signatures
-     */
     debugFaceSignatures() {
         console.log('🔍 FACE SIGNATURES DEBUG:');
         console.log('- Total tracked persons:', this.trackedPersons.size);
         console.log('- Face signatures:', Array.from(this.faceSignatures.entries()));
-        console.log('- Presence status:', Array.from(this.presenceStatus.entries()));
-    }
-
-    debugInfo() {
-        console.log('🔍 PROFESSIONAL TRACKER DEBUG:');
-        console.log('- Tracked persons:', this.trackedPersons.size);
-        console.log('- Unique persons:', this.getUniquePersonsCount());
-        console.log('- Current in frame:', this.getCurrentPersonsCount());
-        console.log('- Total appearances:', this.getTotalAppearances());
-        console.log('- Appearance counts:', Array.from(this.appearanceCounts.entries()));
-        console.log('- Presence status:', Array.from(this.presenceStatus.entries()));
     }
 }
