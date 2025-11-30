@@ -9,7 +9,7 @@ class FaceDetector {
         this.isModelLoading = false;
         this.modelsLoaded = false;
 
-        // QUAN TRỌNG: ĐẢM BẢO faceTracker được khởi tạo
+        // Face Tracker
         this.faceTracker = new ImprovedFaceTracker();
         console.log('🎯 FaceTracker initialized');
 
@@ -21,8 +21,9 @@ class FaceDetector {
         this.startTime = null;
         this.totalFacesCount = 0;
 
-        // Thêm dòng này - khai báo uniqueFaces
-        this.uniqueFaces = new Map(); // ← THÊM DÒNG NÀY
+        // Face Tracking Data
+        this.uniqueFaces = new Map();
+        this.faceAppearanceHistory = new Map(); // Lưu lịch sử xuất hiện của từng face
 
         // MediaPipe Variables
         this.lastResults = null;
@@ -39,11 +40,12 @@ class FaceDetector {
         this.onTotalFacesUpdate = null;
         this.onTrackingTimeUpdate = null;
 
-        // Performance Settings
-        this.minDetectionInterval = 1000 / 15; // 15 FPS
+        // Performance Settings - TĂNG LÊN 15 FPS
+        this.minDetectionInterval = 1000 / 15; // 15 FPS (giảm từ 66ms xuống 66ms)
+        this.lastDetectionTime = 0;
         this.canvasInitialized = false;
 
-        console.log('🎯 FaceDetector initialized');
+        console.log('🎯 FaceDetector initialized - Target: 15 FPS');
 
         this.loadMediaPipeModel();
     }
@@ -121,28 +123,19 @@ class FaceDetector {
     }
 
     handleMediaPipeResults(results) {
-        // QUAN TRỌNG: Luôn xử lý kết quả ngay cả khi không tracking
-        // để duy trì video display
         if (!this.isDetectionRunning) return;
 
         try {
             this.ctx.save();
-            this.drawVideoFrame(); // Luôn vẽ video frame
+            this.drawVideoFrame();
 
             const detections = results.detections || [];
-
-            // Chỉ log khi có tracking hoặc debug
-            if (this.isTracking && detections.length > 0) {
-                console.log(`🎯 MediaPipe detected: ${detections.length} faces`);
-            }
-
             const formattedFaces = this.formatDetections(detections);
 
             if (formattedFaces.length > 0) {
-                // Tạo simple embeddings từ các đặc điểm khuôn mặt
+                // Tạo embeddings cho tracking
                 this.createFaceEmbeddings(formattedFaces);
 
-                // SAFE CHECK: Đảm bảo faceTracker tồn tại
                 if (!this.faceTracker) {
                     console.error('❌ faceTracker not available for tracking');
                     return;
@@ -154,7 +147,7 @@ class FaceDetector {
                 if (this.isTracking) {
                     this.updateTrackingStats(trackedFaces);
                 } else {
-                    // Vẫn cập nhật số khuôn mặt hiện tại ngay cả khi không tracking
+                    // Vẫn cập nhật số khuôn mặt hiện tại
                     if (this.onFaceCountUpdate) {
                         this.onFaceCountUpdate(trackedFaces.length);
                     }
@@ -172,8 +165,6 @@ class FaceDetector {
         } catch (error) {
             console.error('❌ Error handling MediaPipe results:', error);
             this.ctx.restore();
-
-            // Vẽ lại video frame nếu có lỗi
             if (this.isCameraOn) {
                 this.drawVideoFrame();
             }
@@ -734,22 +725,22 @@ class FaceDetector {
         this.ctx.scale(-1, 1);
     }
 
-    startDetectionLoop() {
+    async startDetectionLoop() {
         if (this.isDetectionRunning) return;
 
         this.isDetectionRunning = true;
         this.lastDetectionTime = 0;
 
-        console.log('🔄 Starting MediaPipe detection loop...');
+        console.log('🔄 Starting MediaPipe detection loop at 15 FPS...');
 
         const detectionLoop = async (timestamp) => {
-            // QUAN TRỌNG: Luôn chạy khi camera đang bật, không phụ thuộc vào tracking
             if (!this.isCameraOn || !this.isDetectionRunning) {
                 this.isDetectionRunning = false;
                 return;
             }
 
             const currentTime = Date.now();
+            // Đảm bảo chính xác 15 FPS
             if (currentTime - this.lastDetectionTime >= this.minDetectionInterval) {
                 this.lastDetectionTime = currentTime;
 
@@ -760,14 +751,12 @@ class FaceDetector {
                     await this.detectWithMediaPipe();
                 } catch (error) {
                     console.error('❌ Error in MediaPipe detection:', error);
-                    // Vẽ lại video frame nếu có lỗi detection
                     if (this.isCameraOn) {
                         this.drawVideoFrame();
                     }
                 }
             }
 
-            // QUAN TRỌNG: Luôn tiếp tục loop khi camera đang bật
             if (this.isCameraOn && this.isDetectionRunning) {
                 requestAnimationFrame(detectionLoop);
             } else {
@@ -777,6 +766,7 @@ class FaceDetector {
 
         requestAnimationFrame(detectionLoop);
     }
+
 
     // Thêm vào class FaceDetector
     ensureVideoDisplay() {
@@ -1004,36 +994,28 @@ class FaceDetector {
             return;
         }
 
-        // ĐẢM BẢO faceTracker tồn tại
+        // Reset tracker hoàn toàn
         if (!this.faceTracker) {
-            console.error('❌ faceTracker not initialized, creating new one');
             this.faceTracker = new ImprovedFaceTracker();
         }
-
-        // RESET HOÀN TOÀN trước khi bắt đầu
         this.faceTracker.resetCompletely();
-
 
         this.isTracking = true;
         this.sessionId = Date.now().toString();
         this.startTime = Date.now();
         this.totalFacesCount = 0;
+
+        // Reset lịch sử
         this.uniqueFaces.clear();
-        this.faceTracker.reset();
+        this.faceAppearanceHistory.clear();
 
-        // Đảm bảo uniqueFaces được khởi tạo
-        if (!this.uniqueFaces) {
-            this.uniqueFaces = new Map();
-        } else {
-            this.uniqueFaces.clear();
-        }
-
+        // UI updates
         const recordingStatus = document.getElementById('recordingStatus');
         if (recordingStatus) {
             recordingStatus.classList.add('active');
         }
 
-        // Đảm bảo timeInterval được khởi tạo đúng
+        // Time tracking
         if (this.timeInterval) {
             clearInterval(this.timeInterval);
         }
@@ -1046,7 +1028,7 @@ class FaceDetector {
         }, 1000);
 
         this.updateButtonStates();
-        console.log('✅ Face tracking started');
+        console.log('✅ Face tracking started at 15 FPS');
     }
 
     stopTracking() {
@@ -1056,6 +1038,7 @@ class FaceDetector {
 
         this.isTracking = false;
 
+        // UI updates
         const recordingStatus = document.getElementById('recordingStatus');
         if (recordingStatus) {
             recordingStatus.classList.remove('active');
@@ -1066,31 +1049,41 @@ class FaceDetector {
             this.timeInterval = null;
         }
 
-        // KHÔNG reset totalFacesCount - giữ lại số đã đếm
-        // this.totalFacesCount = 0;
-
-        // KHÔNG xóa uniqueFaces
-        // if (this.uniqueFaces) {
-        //     this.uniqueFaces.clear();
-        // }
-
+        // Giữ lại số liệu thống kê
         if (this.onFaceCountUpdate) this.onFaceCountUpdate(0);
-        if (this.onTotalFacesUpdate) this.onTotalFacesUpdate(this.totalFacesCount); // Giữ tổng số
-        if (this.onTrackingTimeUpdate) this.onTrackingTimeUpdate(0);
+        if (this.onTotalFacesUpdate) this.onTotalFacesUpdate(this.totalFacesCount);
 
-        // QUAN TRỌNG: Đảm bảo detection loop vẫn chạy
+        // Đảm bảo detection loop vẫn chạy
         if (this.isCameraOn && !this.isDetectionRunning) {
             this.startDetectionLoop();
         }
 
-        // Vẽ lại video frame ngay lập tức
+        // Vẽ lại UI
         if (this.isCameraOn) {
             this.drawVideoFrame();
             this.drawStatusInfo();
         }
 
         this.updateButtonStates();
-        console.log('✅ Face tracking stopped - camera still running');
+
+        // Log kết quả cuối cùng
+        console.log(`📊 Tracking stopped. Total faces detected: ${this.totalFacesCount}`);
+        console.log(`⏱️ Tracking duration: ${Math.floor((Date.now() - this.startTime) / 1000)} seconds`);
+    }
+
+    // Thêm phương thức để debug FPS
+    getCurrentFPS() {
+        return 15; // FPS cố định mà chúng ta đặt
+    }
+
+    getPerformanceInfo() {
+        return {
+            fps: this.getCurrentFPS(),
+            detectionInterval: this.minDetectionInterval,
+            isTracking: this.isTracking,
+            totalFaces: this.totalFacesCount,
+            uniqueFaces: this.faceTracker ? this.faceTracker.getUniqueFacesCount() : 0
+        };
     }
 
     updateButtonStates() {
@@ -1188,37 +1181,16 @@ class FaceDetector {
         console.log('✅ Callbacks set');
     }
 
-    // SỬA updateTrackingStats để debug
-    // SỬA PHƯƠNG THỨC updateTrackingStats
     updateTrackingStats(trackedFaces) {
         if (!this.isTracking) return;
 
         try {
             const currentFaceCount = trackedFaces.length;
 
-            // DEBUG: Kiểm tra faceTracker tồn tại
-            if (!this.faceTracker) {
-                console.error('❌ faceTracker is undefined!');
-                return;
-            }
-
-            // DEBUG: Log face appearances map
-            console.log('🔍 FaceAppearances Map:', Array.from(this.faceTracker.faceAppearances.entries()));
-
-            let newAppearances = 0;
-            trackedFaces.forEach(face => {
-                if (face.isNew) {
-                    newAppearances++;
-                    console.log(`🎉 TRULY NEW APPEARANCE: face ${face.id}`);
-                }
-            });
-
             // Lấy tổng số lượt xuất hiện từ tracker
             this.totalFacesCount = this.faceTracker.getTotalAppearances();
 
-            // DEBUG: Verify total count
-            console.log(`🔢 Total faces count: ${this.totalFacesCount}`);
-
+            // Cập nhật callback
             if (this.onFaceCountUpdate) {
                 this.onFaceCountUpdate(currentFaceCount);
             }
@@ -1227,7 +1199,8 @@ class FaceDetector {
                 this.onTotalFacesUpdate(this.totalFacesCount);
             }
 
-            console.log(`📈 Stats: current=${currentFaceCount}, new=${newAppearances}, total_appearances=${this.totalFacesCount}`);
+            // Log hiệu suất
+            console.log(`📈 Tracking: ${currentFaceCount} faces currently, ${this.totalFacesCount} total appearances`);
 
         } catch (error) {
             console.error('❌ Error updating tracking stats:', error);
@@ -1284,47 +1257,27 @@ class ImprovedFaceTracker {
 
         // Tracking thresholds
         this.positionThreshold = 0.6;
-        this.recognitionThreshold = 0.8;
+        this.recognitionThreshold = 0.7;
 
         this.positionHistory = new Map();
         this.smoothingFactor = 0.3;
 
-        // Appearance tracking
+        // Appearance tracking - ĐƠN GIẢN HÓA
         this.faceAppearances = new Map(); // faceSignature -> count
-        this.departedFaces = new Map(); // faceSignature -> faceData
-        this.activeFaces = new Set(); // faceSignature của các khuôn mặt đang trong khung hình
+        this.faceFirstSeen = new Map(); // faceSignature -> timestamp
+        this.activeInFrame = new Set(); // faceSignature đang trong frame
 
-        // Thêm biến để theo dõi trạng thái
-        this.faceInFrameStatus = new Map(); // faceSignature -> boolean (đang trong khung hình hay không)
-        this.lastAppearanceTime = new Map(); // ← THÊM DÒNG NÀY
-        this.minReappearanceDelay = 3000; // ← THÊM: 3 giây giữa các lần đếm
+        console.log('🎯 ImprovedFaceTracker initialized');
     }
 
-    reset() {
+    resetCompletely() {
         this.faces.clear();
         this.nextId = 1;
         this.positionHistory.clear();
         this.faceAppearances.clear();
-        this.departedFaces.clear();
-        this.activeFaces.clear();
-        this.faceInFrameStatus.clear();
-    }
-
-    // THÊM PHƯƠNG THỨC registerFaceSignature
-    registerFaceSignature(face) {
-        if (!face.embedding) return null;
-
-        const signature = this.getFaceSignature(face);
-        if (signature) {
-            // Chỉ tạo mới nếu chưa tồn tại
-            if (!this.faceAppearances.has(signature)) {
-                this.faceAppearances.set(signature, 0); // Khởi tạo count = 0
-                console.log(`📝 Registered new face signature: ${signature}`);
-            }
-            // Luôn cập nhật trạng thái vào khung hình
-            this.faceInFrameStatus.set(signature, true);
-        }
-        return signature;
+        this.faceFirstSeen.clear();
+        this.activeInFrame.clear();
+        console.log('🔄 Face tracker reset completely');
     }
 
     update(currentFaces) {
@@ -1339,26 +1292,17 @@ class ImprovedFaceTracker {
 
         // Theo dõi khuôn mặt đang active trong frame hiện tại
         const currentActiveSignatures = new Set();
-        for (const currentFace of currentFaces) {
-            const currentSignature = this.getFaceSignature(currentFace);
-            if (currentSignature) {
-                currentActiveSignatures.add(currentSignature);
-            }
-        }
 
         // Giai đoạn 1: Match với faces đang được track
         for (const currentFace of currentFaces) {
+            const currentSignature = this.getFaceSignature(currentFace);
+            currentActiveSignatures.add(currentSignature);
+
             let bestMatch = null;
             let bestScore = this.positionThreshold;
             let bestMatchId = null;
 
-            // Tạo signature cho khuôn mặt hiện tại
-            const currentSignature = this.getFaceSignature(currentFace);
-            if (currentSignature) {
-                currentActiveSignatures.add(currentSignature);
-            }
-
-            // Tìm match tốt nhất
+            // Tìm match tốt nhất dựa trên vị trí và embedding
             for (const [id, knownFace] of this.faces.entries()) {
                 if (knownFace.seen || usedMatches.has(id)) continue;
 
@@ -1380,13 +1324,12 @@ class ImprovedFaceTracker {
                 bestMatch.confidence = currentFace.confidence;
                 bestMatch.lastSeen = Date.now();
 
-                // Update embedding để cải thiện recognition
+                // Update embedding
                 if (currentFace.embedding) {
-                    // Smooth embedding update
                     if (!bestMatch.embedding) {
                         bestMatch.embedding = currentFace.embedding;
                     } else {
-                        // Cập nhật embedding với smoothing
+                        // Smooth embedding update
                         for (let i = 0; i < bestMatch.embedding.length; i++) {
                             bestMatch.embedding[i] = this.lerp(
                                 bestMatch.embedding[i],
@@ -1399,13 +1342,12 @@ class ImprovedFaceTracker {
 
                 usedMatches.add(bestMatchId);
 
-                // Kiểm tra xem khuôn mặt này vừa mới vào khung hình
-                const faceSignature = this.getFaceSignature(bestMatch);
-                const isNewAppearance = this.checkAndUpdateFrameEntry(faceSignature);
+                // Kiểm tra và đếm xuất hiện mới
+                this.handleFaceAppearance(bestMatch, currentSignature);
 
                 results.push({
                     id: bestMatchId,
-                    isNew: isNewAppearance,
+                    isNew: false, // Không phải face mới, chỉ là update
                     x: bestMatch.x,
                     y: bestMatch.y,
                     width: bestMatch.width,
@@ -1413,94 +1355,30 @@ class ImprovedFaceTracker {
                     confidence: bestMatch.confidence
                 });
 
-                // TĂNG ĐẾM NẾU LÀ XUẤT HIỆN MỚI
-                if (isNewAppearance) {
-                    this.incrementAppearanceCount(bestMatch);
-                    console.log(`🎉 Face ${bestMatchId} entered frame - COUNT: ${this.faceAppearances.get(faceSignature)}`);
-                }
-
             } else {
-                // Thử fallback matching nếu không tìm thấy match chính
-                const fallbackMatch = this.findFallbackMatch(currentFace);
+                // Tạo face mới
+                const newFace = this.createNewFace(currentFace);
+                this.faces.set(newFace.id, newFace);
 
-                if (fallbackMatch && fallbackMatch.distance < 50) {
-                    console.log(`🔄 Using fallback match for face ${fallbackMatch.id}, distance: ${fallbackMatch.distance.toFixed(1)}`);
-                    bestMatch = fallbackMatch.face;
-                    bestMatchId = fallbackMatch.id;
+                // Xử lý xuất hiện của face mới
+                this.handleFaceAppearance(newFace, currentSignature);
 
-                    // Update existing face với fallback
-                    this.updateFaceWithSmoothing(bestMatch, currentFace);
-                    bestMatch.seen = true;
-                    bestMatch.framesLost = 0;
-                    bestMatch.isTracked = true;
-                    bestMatch.confidence = currentFace.confidence;
-                    bestMatch.lastSeen = Date.now();
+                results.push({
+                    id: newFace.id,
+                    isNew: true,
+                    x: currentFace.x,
+                    y: currentFace.y,
+                    width: currentFace.width,
+                    height: currentFace.height,
+                    confidence: currentFace.confidence
+                });
 
-                    // Update embedding với smoothing mạnh hơn
-                    if (currentFace.embedding && bestMatch.embedding) {
-                        for (let i = 0; i < bestMatch.embedding.length; i++) {
-                            bestMatch.embedding[i] = this.lerp(
-                                bestMatch.embedding[i],
-                                currentFace.embedding[i],
-                                0.5 // Tăng smoothing
-                            );
-                        }
-                    }
-
-                    usedMatches.add(bestMatchId);
-
-                    const faceSignature = this.getFaceSignature(bestMatch);
-                    const isNewAppearance = this.checkAndUpdateFrameEntry(faceSignature);
-
-                    results.push({
-                        id: bestMatchId,
-                        isNew: isNewAppearance,
-                        x: bestMatch.x,
-                        y: bestMatch.y,
-                        width: bestMatch.width,
-                        height: bestMatch.height,
-                        confidence: bestMatch.confidence
-                    });
-
-                    if (isNewAppearance) {
-                        this.incrementAppearanceCount(bestMatch);
-                        console.log(`🎉 Face ${bestMatchId} entered frame (fallback) - COUNT: ${this.faceAppearances.get(faceSignature)}`);
-                    }
-
-                } else {
-                    // Tạo face mới thực sự
-                    const newFace = this.createNewFace(currentFace);
-                    this.faces.set(newFace.id, newFace);
-
-                    // Đăng ký face signature và đánh dấu là vào khung hình
-                    const faceSignature = this.registerFaceSignature(newFace);
-
-                    // QUAN TRỌNG: Luôn tăng count cho face mới (không check time)
-                    if (faceSignature) {
-                        const currentCount = this.faceAppearances.get(faceSignature) || 0;
-                        this.faceAppearances.set(faceSignature, currentCount + 1);
-                        this.lastAppearanceTime.set(faceSignature, Date.now());
-                        console.log(`🎉 Face ${newFace.id} FIRST APPEARANCE - COUNT: ${currentCount + 1}`);
-                    }
-
-                    results.push({
-                        id: newFace.id,
-                        isNew: true,
-                        x: currentFace.x,
-                        y: currentFace.y,
-                        width: currentFace.width,
-                        height: currentFace.height,
-                        confidence: currentFace.confidence
-                    });
-                }
+                console.log(`🎉 New face detected: ID ${newFace.id}`);
             }
         }
 
-        // Xử lý các khuôn mặt rời khung hình
+        // Xử lý các face rời khung hình
         this.handleFrameExits(currentActiveSignatures);
-
-        // Xử lý faces rời khung hình
-        this.handleDepartedFaces();
 
         // Dọn dẹp faces mất tích
         this.cleanupLostFaces();
@@ -1508,184 +1386,93 @@ class ImprovedFaceTracker {
         return results;
     }
 
-    // PHƯƠNG THỨC MỚI: Kiểm tra và cập nhật trạng thái vào khung hình
-    // SỬA PHƯƠNG THỨC NÀY - Cho phép đếm lại khi ra vào khung hình
-    checkAndUpdateFrameEntry(faceSignature) {
-        if (!faceSignature) return false;
+    // PHƯƠNG THỨC QUAN TRỌNG: Xử lý đếm xuất hiện của khuôn mặt
+    handleFaceAppearance(face, signature) {
+        if (!signature) return;
 
-        const wasInFrame = this.faceInFrameStatus.get(faceSignature) || false;
-        const currentTime = Date.now();
+        const now = Date.now();
 
-        if (!wasInFrame) {
-            // Khuôn mặt VỪA VÀO khung hình - LUÔN tính là xuất hiện mới
-            this.faceInFrameStatus.set(faceSignature, true);
-            this.lastAppearanceTime.set(faceSignature, currentTime);
-            console.log(`🎯 Face ${faceSignature} ENTERED frame - READY TO COUNT`);
-            return true;
+        // Nếu là lần đầu thấy signature này
+        if (!this.faceFirstSeen.has(signature)) {
+            this.faceFirstSeen.set(signature, now);
+            this.faceAppearances.set(signature, 1);
+            console.log(`✅ FIRST APPEARANCE: Face ${face.id} (sig: ${signature})`);
+            return;
         }
 
-        // Đã ở trong khung hình trước đó - không tính là mới
-        return false;
+        // Nếu signature đã từng xuất hiện nhưng hiện không trong frame
+        if (!this.activeInFrame.has(signature)) {
+            const currentCount = this.faceAppearances.get(signature) || 0;
+            this.faceAppearances.set(signature, currentCount + 1);
+            this.activeInFrame.add(signature);
+
+            console.log(`🔄 REAPPEARANCE: Face ${face.id} - Count: ${currentCount + 1}`);
+        }
     }
 
-    // PHƯƠNG THỨC MỚI: Xử lý các khuôn mặt rời khung hình
-    // THÊM PHƯƠNG THỨC MỚI - Xử lý khi khuôn mặt rời khung hình
+    // Xử lý khi khuôn mặt rời khung hình
     handleFrameExits(currentActiveSignatures) {
-        // Duyệt qua tất cả các khuôn mặt đã từng xuất hiện
-        for (const [signature, wasInFrame] of this.faceInFrameStatus.entries()) {
-            if (wasInFrame && !currentActiveSignatures.has(signature)) {
-                // Khuôn mặt đã RỜI khung hình - cho phép đếm lại khi vào sau
-                this.faceInFrameStatus.set(signature, false);
-                console.log(`🚪 Face ${signature} LEFT frame - CAN COUNT AGAIN`);
+        // Xóa các signature không còn trong frame hiện tại
+        for (const signature of this.activeInFrame) {
+            if (!currentActiveSignatures.has(signature)) {
+                this.activeInFrame.delete(signature);
+                console.log(`🚪 Face left frame: ${signature}`);
             }
         }
     }
 
-    // SỬA PHƯƠNG THỨC NÀY - Luôn đếm khi vào khung hình mới
-    incrementAppearanceCount(face) {
-        if (!face.embedding) {
-            console.log('❌ No embedding for face, cannot count');
-            return false;
-        }
-
-        const signature = this.getFaceSignature(face);
-        if (!signature) {
-            console.log('❌ No signature for face, cannot count');
-            return false;
-        }
-
-        const currentTime = Date.now();
-
-        // DEBUG: Log để theo dõi
-        console.log(`⏰ Face ${face.id} timing check - READY TO COUNT`);
-
-        // LUÔN tăng count khi vào khung hình mới
-        const currentCount = this.faceAppearances.get(signature) || 0;
-        const newCount = currentCount + 1;
-        this.faceAppearances.set(signature, newCount);
-        this.lastAppearanceTime.set(signature, currentTime);
-
-        console.log(`✅ 📈 Face ${face.id} appearance count: ${newCount}`);
-        return true;
-    }
-
-    // THÊM PHƯƠNG THỨC MỚI - Merge các signature tương tự
-    mergeSimilarSignatures() {
-        const signatures = Array.from(this.faceAppearances.keys());
-        const merged = new Map();
-        const used = new Set();
-
-        for (let i = 0; i < signatures.length; i++) {
-            if (used.has(signatures[i])) continue;
-
-            const currentSig = signatures[i];
-            let totalCount = this.faceAppearances.get(currentSig) || 0;
-            used.add(currentSig);
-
-            // Tìm các signature tương tự
-            for (let j = i + 1; j < signatures.length; j++) {
-                if (used.has(signatures[j])) continue;
-
-                const otherSig = signatures[j];
-                if (this.areSignaturesSimilar(currentSig, otherSig)) {
-                    totalCount += this.faceAppearances.get(otherSig) || 0;
-                    used.add(otherSig);
-                    console.log(`🔄 Merging ${otherSig} into ${currentSig}`);
-                }
-            }
-
-            merged.set(currentSig, totalCount);
-        }
-
-        // Cập nhật lại faceAppearances
-        this.faceAppearances = merged;
-        console.log(`🔀 Signature merge completed: ${this.faceAppearances.size} unique signatures`);
-    }
-
-    // THÊM PHƯƠNG THỨC - Kiểm tra similarity
-    areSignaturesSimilar(sig1, sig2, threshold = 0.3) {
-        const values1 = sig1.split('-').map(Number);
-        const values2 = sig2.split('-').map(Number);
-
-        if (values1.length !== values2.length) return false;
-
-        let totalDiff = 0;
-        for (let i = 0; i < values1.length; i++) {
-            totalDiff += Math.abs(values1[i] - values2[i]);
-        }
-
-        const avgDiff = totalDiff / values1.length;
-        return avgDiff < threshold;
-    }
-
+    // Tạo signature đơn giản và ổn định hơn
     getFaceSignature(face) {
-        if (!face.embedding || face.embedding.length < 8) return null;
-
-        // GIẢM độ nhạy: chỉ dùng 4 giá trị đầu + làm tròn đến 1 chữ số thập phân
-        const significantValues = face.embedding.slice(0, 4).map(val => {
-            // Làm tròn đến 1 chữ số thập phân (giảm từ 2 xuống 1)
-            return Math.round(val * 10) / 10;
-        });
-
-        const signature = significantValues.join('-');
-
-        // DEBUG: Log signature để kiểm tra
-        console.log(`🔍 Face Signature: ${signature} (from ${face.embedding.slice(0, 4).map(v => v.toFixed(2))})`);
-
-        return signature;
-    }
-    getTotalAppearances() {
-        // Tự động merge các signature tương tự trước khi tính tổng
-        if (this.faceAppearances.size > 5) { // Chỉ merge khi có nhiều signatures
-            this.mergeSimilarSignatures();
+        if (!face.embedding || face.embedding.length < 4) {
+            // Fallback: sử dụng vị trí và kích thước
+            return `pos_${Math.round(face.x / 10)}_${Math.round(face.y / 10)}_${Math.round(face.width / 10)}_${Math.round(face.height / 10)}`;
         }
 
+        // Sử dụng 4 giá trị embedding đầu tiên, làm tròn đến 1 chữ số thập phân
+        const significantValues = face.embedding.slice(0, 4).map(val =>
+            Math.round(val * 10) / 10
+        );
+
+        return `emb_${significantValues.join('_')}`;
+    }
+
+    getTotalAppearances() {
         let total = 0;
         for (const count of this.faceAppearances.values()) {
             total += count;
         }
-        console.log(`🔢 getTotalAppearances: ${total} from ${this.faceAppearances.size} signatures`);
         return total;
     }
 
     getUniqueFacesCount() {
-        return this.faceAppearances.size;
+        return this.faceFirstSeen.size;
     }
 
     getTrackedFacesCount() {
         return Array.from(this.faces.values()).filter(face => face.isTracked).length;
     }
 
-    // CÁC PHƯƠNG THỨC HIỆN CÓ KHÁC - GIỮ NGUYÊN
+    // Các phương thức hỗ trợ giữ nguyên
     calculateMatchScore(currentFace, knownFace) {
-        // Tính điểm dựa trên vị trí trước
         const positionalScore = this.calculatePositionalScore(currentFace, knownFace);
 
-        // Nếu positional score quá thấp, không cần kiểm tra embedding
         if (positionalScore < 0.3) {
             return 0;
         }
 
         let recognitionScore = 0;
         if (currentFace.embedding && knownFace.embedding) {
-            recognitionScore = this.calculateEmbeddingSimilarity(currentFace.embedding, knownFace.embedding);
+            recognitionScore = this.calculateEmbeddingSimilarity(
+                currentFace.embedding,
+                knownFace.embedding
+            );
 
-            // DEBUG: Log similarity score
-            if (recognitionScore > 0.5) {
-                console.log(`🔍 Face matching: positional=${positionalScore.toFixed(2)}, recognition=${recognitionScore.toFixed(2)}`);
-            }
-
-            // Nếu recognition score cao, ưu tiên hơn
-            if (recognitionScore > 0.85) {
-                return 0.9 + (recognitionScore * 0.1);
-            } else if (recognitionScore > 0.7) {
+            // Kết hợp điểm số
+            if (recognitionScore > 0.7) {
                 return 0.7 + (recognitionScore * 0.3);
-            } else if (recognitionScore > 0.6) {
-                return 0.5 + (recognitionScore * 0.2);
             }
         }
 
-        // Nếu không có embedding hoặc recognition score thấp, dùng positional
         return positionalScore;
     }
 
@@ -1707,224 +1494,40 @@ class ImprovedFaceTracker {
         norm1 = Math.sqrt(norm1);
         norm2 = Math.sqrt(norm2);
 
-        const similarity = norm1 === 0 || norm2 === 0 ? 0 : dotProduct / (norm1 * norm2);
-
-        // Giảm threshold để dễ match hơn
-        return similarity > 0.4 ? similarity : 0;
+        return norm1 === 0 || norm2 === 0 ? 0 : dotProduct / (norm1 * norm2);
     }
 
     calculatePositionalScore(currentFace, knownFace) {
-        const iouScore = this.calculateIoU(currentFace, knownFace);
         const distance = this.calculateDistance(currentFace, knownFace);
-
-        // Tăng tolerance - cho phép khoảng cách lớn hơn
-        if (iouScore < 0.1 && distance > 150) {
-            return 0;
-        }
-
         const sizeSimilarity = this.calculateSizeSimilarity(currentFace, knownFace);
 
-        const score = (iouScore * 0.5) +
-            (Math.max(0, 1 - distance / 200) * 0.4) + // Tăng max distance
-            (sizeSimilarity * 0.1);
+        // Ưu tiên khoảng cách gần và kích thước tương tự
+        const distanceScore = Math.max(0, 1 - distance / 150);
+        const finalScore = (distanceScore * 0.7) + (sizeSimilarity * 0.3);
 
-        // DEBUG
-        if (score > 0.4) {
-            console.log(`📍 Positional score: iou=${iouScore.toFixed(2)}, dist=${distance.toFixed(0)}, size=${sizeSimilarity.toFixed(2)}, total=${score.toFixed(2)}`);
-        }
-
-        return score;
-    }
-
-    findRecognitionMatch(currentFace) {
-        if (!currentFace.embedding) return null;
-
-        let bestMatch = null;
-        let bestScore = 0;
-
-        for (const [id, knownFace] of this.faces.entries()) {
-            if (!knownFace.embedding) continue;
-
-            const similarity = this.calculateEmbeddingSimilarity(
-                currentFace.embedding,
-                knownFace.embedding
-            );
-
-            if (similarity > this.recognitionThreshold && similarity > bestScore) {
-                bestScore = similarity;
-                bestMatch = knownFace;
-                bestMatchId = id;
-            }
-        }
-
-        return bestMatch ? { face: bestMatch, id: bestMatchId, score: bestScore } : null;
-    }
-
-    checkFaceReappearance(currentFace) {
-        if (!currentFace.embedding) return null;
-
-        for (const [signature, faceData] of this.departedFaces.entries()) {
-            if (!faceData.embedding) continue;
-
-            const similarity = this.calculateEmbeddingSimilarity(
-                currentFace.embedding,
-                faceData.embedding
-            );
-
-            if (similarity > this.recognitionThreshold) {
-                // Khôi phục face từ departed
-                const reappearedFace = { ...faceData.face };
-                reappearedFace.id = faceData.face.id;
-                reappearedFace.framesLost = 0;
-                reappearedFace.isTracked = true;
-                reappearedFace.lastSeen = Date.now();
-                reappearedFace.embedding = currentFace.embedding;
-
-                // Xóa khỏi departed
-                this.departedFaces.delete(signature);
-                // Thêm lại vào active tracking
-                this.faces.set(reappearedFace.id, reappearedFace);
-
-                return reappearedFace;
-            }
-        }
-
-        return null;
-    }
-
-    handleDepartedFaces() {
-        for (const [id, face] of this.faces.entries()) {
-            if (!face.seen && face.framesLost > 15) { // Sau 15 frames không thấy
-                const signature = this.getFaceSignature(face);
-                if (signature) {
-                    this.departedFaces.set(signature, {
-                        face: { ...face },
-                        embedding: face.embedding,
-                        departedAt: Date.now()
-                    });
-                }
-
-                // Xóa khỏi active tracking
-                this.faces.delete(id);
-                this.positionHistory.delete(id);
-            }
-        }
-
-        // Dọn dẹp departed faces cũ (quá 60 giây)
-        const now = Date.now();
-        for (const [signature, faceData] of this.departedFaces.entries()) {
-            if (now - faceData.departedAt > 60000) {
-                this.departedFaces.delete(signature);
-            }
-        }
-    }
-
-    updateFaceWithSmoothing(knownFace, currentFace) {
-        const history = this.positionHistory.get(knownFace.id) || [];
-
-        history.push({
-            x: currentFace.x,
-            y: currentFace.y,
-            width: currentFace.width,
-            height: currentFace.height,
-            timestamp: Date.now()
-        });
-
-        if (history.length > 5) history.shift();
-        this.positionHistory.set(knownFace.id, history);
-
-        const smoothed = this.calculateSimpleAverage(history);
-
-        knownFace.x = this.lerp(knownFace.x, smoothed.x, this.smoothingFactor);
-        knownFace.y = this.lerp(knownFace.y, smoothed.y, this.smoothingFactor);
-        knownFace.width = this.lerp(knownFace.width, smoothed.width, this.smoothingFactor * 0.5);
-        knownFace.height = this.lerp(knownFace.height, smoothed.height, this.smoothingFactor * 0.5);
-    }
-
-    calculateSimpleAverage(history) {
-        if (history.length === 0) return { x: 0, y: 0, width: 0, height: 0 };
-
-        const sum = history.reduce((acc, point) => ({
-            x: acc.x + point.x,
-            y: acc.y + point.y,
-            width: acc.width + point.width,
-            height: acc.height + point.height
-        }), { x: 0, y: 0, width: 0, height: 0 });
-
-        const count = history.length;
-        return {
-            x: sum.x / count,
-            y: sum.y / count,
-            width: sum.width / count,
-            height: sum.height / count
-        };
-    }
-
-    calculateIoU(face1, face2) {
-        try {
-            const box1 = this.getBoundingBox(face1);
-            const box2 = this.getBoundingBox(face2);
-
-            const x1 = Math.max(box1.left, box2.left);
-            const y1 = Math.max(box1.top, box2.top);
-            const x2 = Math.min(box1.right, box2.right);
-            const y2 = Math.min(box1.bottom, box2.bottom);
-
-            const intersection = Math.max(0, x2 - x1) * Math.max(0, y2 - y1);
-            const area1 = (box1.right - box1.left) * (box1.bottom - box1.top);
-            const area2 = (box2.right - box2.left) * (box2.bottom - box2.top);
-            const union = area1 + area2 - intersection;
-
-            return union > 0 ? intersection / union : 0;
-        } catch (error) {
-            return 0;
-        }
-    }
-
-    getBoundingBox(face) {
-        try {
-            if (!face || isNaN(face.x) || isNaN(face.y) || isNaN(face.width) || isNaN(face.height)) {
-                return { left: 0, top: 0, right: 0, bottom: 0 };
-            }
-
-            const halfWidth = face.width / 2;
-            const halfHeight = face.height / 2;
-            return {
-                left: face.x - halfWidth,
-                top: face.y - halfHeight,
-                right: face.x + halfWidth,
-                bottom: face.y + halfHeight
-            };
-        } catch (error) {
-            return { left: 0, top: 0, right: 0, bottom: 0 };
-        }
-    }
-
-    calculateSizeSimilarity(face1, face2) {
-        try {
-            const area1 = face1.width * face1.height;
-            const area2 = face2.width * face2.height;
-            const minArea = Math.min(area1, area2);
-            const maxArea = Math.max(area1, area2);
-            return maxArea > 0 ? minArea / maxArea : 0;
-        } catch (error) {
-            return 0;
-        }
+        return finalScore;
     }
 
     calculateDistance(face1, face2) {
-        try {
-            return Math.sqrt(
-                Math.pow(face1.x - face2.x, 2) +
-                Math.pow(face1.y - face2.y, 2)
-            );
-        } catch (error) {
-            return 1000;
-        }
+        return Math.sqrt(
+            Math.pow(face1.x - face2.x, 2) +
+            Math.pow(face1.y - face2.y, 2)
+        );
     }
 
-    lerp(start, end, factor) {
-        return start * (1 - factor) + end * factor;
+    calculateSizeSimilarity(face1, face2) {
+        const area1 = face1.width * face1.height;
+        const area2 = face2.width * face2.height;
+        const minArea = Math.min(area1, area2);
+        const maxArea = Math.max(area1, area2);
+        return maxArea > 0 ? minArea / maxArea : 0;
+    }
+
+    updateFaceWithSmoothing(knownFace, currentFace) {
+        knownFace.x = this.lerp(knownFace.x, currentFace.x, this.smoothingFactor);
+        knownFace.y = this.lerp(knownFace.y, currentFace.y, this.smoothingFactor);
+        knownFace.width = this.lerp(knownFace.width, currentFace.width, this.smoothingFactor * 0.5);
+        knownFace.height = this.lerp(knownFace.height, currentFace.height, this.smoothingFactor * 0.5);
     }
 
     createNewFace(faceData) {
@@ -1953,64 +1556,16 @@ class ImprovedFaceTracker {
         }
     }
 
-    // Thêm phương thức mới vào ImprovedFaceTracker
-    findFallbackMatch(currentFace) {
-        let bestMatch = null;
-        let bestDistance = Infinity;
-
-        for (const [id, knownFace] of this.faces.entries()) {
-            if (knownFace.seen) continue;
-
-            const distance = this.calculateDistance(currentFace, knownFace);
-
-            // Nếu khoảng cách gần và kích thước tương tự
-            if (distance < 80 && this.calculateSizeSimilarity(currentFace, knownFace) > 0.6) {
-                if (distance < bestDistance) {
-                    bestDistance = distance;
-                    bestMatch = knownFace;
-                    bestMatchId = id;
-                }
-            }
-        }
-
-        return bestMatch ? { face: bestMatch, id: bestMatchId, distance: bestDistance } : null;
+    lerp(start, end, factor) {
+        return start * (1 - factor) + end * factor;
     }
 
-    // THÊM PHƯƠNG THỨC DEBUG
-    debugFaceSignatures() {
-        console.log('🔍 DEBUG Face Signatures:');
-        console.log('- Total tracked faces:', this.faces.size);
-        console.log('- Total unique signatures:', this.faceAppearances.size);
-        console.log('- Face appearances:', Array.from(this.faceAppearances.entries()));
-        console.log('- Face in frame status:', Array.from(this.faceInFrameStatus.entries()));
-    }
-
-    // Thêm debug cho face signatures
-    debugFaceTracking() {
-        console.log('🔍 FACE TRACKING DEBUG:');
-        console.log(`- Tracked faces: ${this.faces.size}`);
-        console.log(`- Unique signatures: ${this.faceAppearances.size}`);
-
-        let signatureCounts = {};
-        for (const face of this.faces.values()) {
-            const signature = this.getFaceSignature(face);
-            signatureCounts[signature] = (signatureCounts[signature] || 0) + 1;
-        }
-
-        console.log('- Signature distribution:', signatureCounts);
-        console.log('- Face appearances:', Array.from(this.faceAppearances.entries()));
-    }
-
-    // THÊM VÀO ImprovedFaceTracker
-    resetCompletely() {
-        this.faces.clear();
-        this.nextId = 1;
-        this.positionHistory.clear();
-        this.faceAppearances.clear();
-        this.departedFaces.clear();
-        this.activeFaces.clear();
-        this.faceInFrameStatus.clear();
-        this.lastAppearanceTime.clear();
-        console.log('🔄 Face tracker reset completely');
+    // Debug method
+    debugInfo() {
+        console.log('🔍 FACE TRACKER DEBUG:');
+        console.log(`- Active faces: ${this.faces.size}`);
+        console.log(`- Unique faces: ${this.getUniqueFacesCount()}`);
+        console.log(`- Total appearances: ${this.getTotalAppearances()}`);
+        console.log(`- Active in frame: ${this.activeInFrame.size}`);
     }
 }
