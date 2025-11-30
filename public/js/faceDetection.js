@@ -911,18 +911,22 @@ class FaceDetector {
         this.ctx.font = 'bold 14px Arial';
         this.ctx.textAlign = 'left';
 
+        // SỬA: Sử dụng getCurrentPersonsCount() thay vì getTrackedFacesCount()
+        const currentFaces = this.faceTracker.getCurrentPersonsCount ?
+            this.faceTracker.getCurrentPersonsCount() : 0;
+
         if (this.isTracking) {
-            this.ctx.fillText('🎭 Đang Theo Dõi (MediaPipe)', 20, 30);
+            this.ctx.fillText('🎭 Đang Theo Dõi (Professional)', 20, 30);
             this.ctx.font = '12px Arial';
             this.ctx.fillText(`Tổng lượt: ${this.totalFacesCount}`, 20, 50);
-            this.ctx.fillText(`Hiện tại: ${this.faceTracker.getTrackedFacesCount()}`, 20, 70);
+            this.ctx.fillText(`Hiện tại: ${currentFaces}`, 20, 70);
         } else if (this.stream) {
-            this.ctx.fillText('📷 Camera (MediaPipe)', 20, 30);
+            this.ctx.fillText('📷 Camera (Professional)', 20, 30);
             this.ctx.font = '12px Arial';
-            this.ctx.fillText(`Khuôn mặt: ${this.faceTracker.getTrackedFacesCount()}`, 20, 50);
+            this.ctx.fillText(`Khuôn mặt: ${currentFaces}`, 20, 50);
             this.ctx.fillText('⏸️ Sẵn sàng thống kê', 20, 70);
         } else {
-            this.ctx.fillText('📷 Camera (MediaPipe)', 20, 30);
+            this.ctx.fillText('📷 Camera (Professional)', 20, 30);
             this.ctx.font = '12px Arial';
             this.ctx.fillText('🛑 Camera đã tắt', 20, 50);
             this.ctx.fillText('Nhấn "Bật Camera"', 20, 70);
@@ -1076,12 +1080,15 @@ class FaceDetector {
     }
 
     getPerformanceInfo() {
+        const trackerInfo = this.faceTracker.getPerformanceInfo ?
+            this.faceTracker.getPerformanceInfo() : {};
+
         return {
-            fps: this.getCurrentFPS(),
-            detectionInterval: this.minDetectionInterval,
+            ...trackerInfo,
+            isCameraOn: this.isCameraOn,
             isTracking: this.isTracking,
-            totalFaces: this.totalFacesCount,
-            uniqueFaces: this.faceTracker ? this.faceTracker.getUniqueFacesCount() : 0
+            isDetectionRunning: this.isDetectionRunning,
+            modelsLoaded: this.modelsLoaded
         };
     }
 
@@ -1184,10 +1191,13 @@ class FaceDetector {
         if (!this.isTracking) return;
 
         try {
-            const currentFaceCount = trackedFaces.length;
+            // SỬA: Sử dụng getCurrentPersonsCount() và getTotalAppearances()
+            const currentFaceCount = this.faceTracker.getCurrentPersonsCount ?
+                this.faceTracker.getCurrentPersonsCount() : trackedFaces.length;
 
             // Lấy tổng số lượt xuất hiện từ tracker
-            this.totalFacesCount = this.faceTracker.getTotalAppearances();
+            this.totalFacesCount = this.faceTracker.getTotalAppearances ?
+                this.faceTracker.getTotalAppearances() : this.totalFacesCount;
 
             // Cập nhật callback
             if (this.onFaceCountUpdate) {
@@ -1198,8 +1208,12 @@ class FaceDetector {
                 this.onTotalFacesUpdate(this.totalFacesCount);
             }
 
-            // Log hiệu suất
-            console.log(`📈 Tracking: ${currentFaceCount} faces currently, ${this.totalFacesCount} total appearances`);
+            // Log hiệu suất mỗi 5 giây để tránh spam console
+            const now = Date.now();
+            if (!this.lastStatsLog || now - this.lastStatsLog > 5000) {
+                console.log(`📈 Tracking: ${currentFaceCount} faces currently, ${this.totalFacesCount} total appearances`);
+                this.lastStatsLog = now;
+            }
 
         } catch (error) {
             console.error('❌ Error updating tracking stats:', error);
@@ -1283,6 +1297,16 @@ class ProfessionalFaceTracker {
         this.presenceStatus.clear();
         this.predictedPositions.clear();
         console.log('🔄 Professional tracker reset completely');
+    }
+
+    getPerformanceInfo() {
+        return {
+            fps: 15, // Fixed FPS
+            currentFaces: this.getCurrentPersonsCount(),
+            totalAppearances: this.getTotalAppearances(),
+            uniquePersons: this.getUniqueFacesCount(),
+            trackedPersons: this.trackedPersons.size
+        };
     }
 
     /**
@@ -1700,6 +1724,75 @@ class ProfessionalFaceTracker {
             currentPersons: this.getCurrentPersonsCount(),
             trackedPersons: this.trackedPersons.size
         };
+    }
+
+    /**
+     * Get number of currently tracked faces (for compatibility)
+     */
+    getTrackedFacesCount() {
+        return Array.from(this.trackedPersons.values()).filter(person =>
+            person.isCurrentlyTracked
+        ).length;
+    }
+
+    /**
+     * Get number of unique persons that have been counted
+     */
+    getUniqueFacesCount() {
+        return this.appearanceCounts.size;
+    }
+
+    /**
+     * Get current active persons in frame
+     */
+    getCurrentPersonsCount() {
+        return Array.from(this.trackedPersons.values()).filter(person =>
+            person.isCurrentlyTracked
+        ).length;
+    }
+
+    /**
+     * Get total appearances across all persons
+     */
+    getTotalAppearances() {
+        let total = 0;
+        for (const count of this.appearanceCounts.values()) {
+            total += count;
+        }
+        return total;
+    }
+
+    /**
+     * Debug method to show all tracked persons
+     */
+    debugFaceTracking() {
+        console.log('🔍 PROFESSIONAL TRACKER DEBUG:');
+        console.log('- Tracked persons:', this.trackedPersons.size);
+        console.log('- Current in frame:', this.getCurrentPersonsCount());
+        console.log('- Unique persons counted:', this.getUniqueFacesCount());
+        console.log('- Total appearances:', this.getTotalAppearances());
+
+        console.log('- Tracked persons details:');
+        for (const [id, person] of this.trackedPersons) {
+            console.log(`  Person ${id}:`, {
+                isCurrentlyTracked: person.isCurrentlyTracked,
+                appearanceCount: this.appearanceCounts.get(id) || 0,
+                lastSeen: new Date(person.lastSeenTime).toLocaleTimeString(),
+                detectionCount: person.detectionCount
+            });
+        }
+
+        console.log('- Appearance counts:', Array.from(this.appearanceCounts.entries()));
+    }
+
+    /**
+     * Debug method for face signatures
+     */
+    debugFaceSignatures() {
+        console.log('🔍 FACE SIGNATURES DEBUG:');
+        console.log('- Total tracked persons:', this.trackedPersons.size);
+        console.log('- Face signatures:', Array.from(this.faceSignatures.entries()));
+        console.log('- Presence status:', Array.from(this.presenceStatus.entries()));
     }
 
     debugInfo() {

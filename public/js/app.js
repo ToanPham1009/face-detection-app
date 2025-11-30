@@ -202,13 +202,25 @@ class FaceDetectionApp {
 
         const elements = {
             'startCamera': () => this.faceDetector.startCamera(),
-            'stopCamera': () => this.faceDetector.stopCamera(), // Gọi từ faceDetector
+            'stopCamera': () => this.faceDetector.stopCamera(),
             'startTracking': () => this.startTracking(),
             'stopTracking': () => this.stopTracking(),
             'debugButton': () => this.faceDetector.debugVideoState(),
             'refreshDisplay': () => this.faceDetector.ensureVideoDisplay(),
-            'debugFaces': () => this.faceDetector.faceTracker.debugFaceSignatures(),
-            'debugTracking': () => this.faceDetector.faceTracker.debugFaceTracking()
+            'debugFaces': () => {
+                if (this.faceDetector.faceTracker.debugFaceSignatures) {
+                    this.faceDetector.faceTracker.debugFaceSignatures();
+                } else {
+                    console.log('❌ debugFaceSignatures not available');
+                }
+            },
+            'debugTracking': () => {
+                if (this.faceDetector.faceTracker.debugFaceTracking) {
+                    this.faceDetector.faceTracker.debugFaceTracking();
+                } else {
+                    console.log('❌ debugFaceTracking not available');
+                }
+            }
         };
 
         for (const [id, handler] of Object.entries(elements)) {
@@ -221,6 +233,7 @@ class FaceDetectionApp {
             }
         }
     }
+
 
     async startTracking() {
         try {
