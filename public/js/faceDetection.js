@@ -53,10 +53,10 @@ class FaceDetector {
     // THÊM PHƯƠNG THỨC KHỞI TẠO FACE TRACKER
     initializeFaceTracker() {
         try {
-            this.faceTracker = new OptimizedFaceTracker(); // Sử dụng tracker mới
-            console.log('✅ Optimized FaceTracker initialized successfully');
+            this.faceTracker = new AccurateFaceTracker();
+            console.log('✅ Accurate FaceTracker initialized successfully');
         } catch (error) {
-            console.error('❌ Failed to initialize Optimized FaceTracker:', error);
+            console.error('❌ Failed to initialize Accurate FaceTracker:', error);
             this.faceTracker = this.createFallbackTracker();
         }
     }
@@ -1356,59 +1356,33 @@ class FaceDetector {
     }
 }
 
-class OptimizedFaceTracker {
+class AccurateFaceTracker {
     constructor() {
         this.trackedPersons = new Map();
         this.nextPersonId = 1;
 
         // TĂNG thời gian theo dõi khuôn mặt mất tích
-        this.maxFramesLost = 90; // 3 giây (từ 30 frames → 90 frames)
+        this.maxFramesLost = 60; // 2 giây
 
-        // GIẢM ngưỡng matching để dễ theo dõi hơn
-        this.matchThreshold = 0.3;
+        // THÊM: Theo dõi trạng thái xuất hiện
+        this.facePresenceState = new Map(); // personId -> {isInFrame: boolean, lastExitTime: number}
 
-        // TĂNG khoảng cách matching
-        this.maxMatchDistance = 120;
+        // THÊM: Đếm số lần xuất hiện
+        this.faceAppearanceCount = new Map(); // personId -> count
 
-        // Appearance tracking - THÊM debouncing cho log
-        this.faceAppearances = new Map();
-        this.faceSignatures = new Map();
-        this.lastCountTime = new Map();
-        this.presenceStatus = new Map();
-
-        // THÊM: Biến để giảm spam log
+        // Giảm spam log
         this.lastLogTime = 0;
-        this.logInterval = 2000; // Chỉ log mỗi 2 giây
-        this.newPersonLogCount = 0;
+        this.logInterval = 3000;
 
-        // Settings
-        this.minCountInterval = 2000;
-        this.signatureStabilityThreshold = 0.8;
-
-        console.log('🎯 OptimizedFaceTracker initialized - Better single face tracking');
-    }
-
-    extractFaceEmbedding(detection) {
-        const embedding = [
-            detection.width / 640,
-            detection.height / 480,
-            detection.x / 640,
-            detection.y / 480,
-            detection.confidence,
-            detection.width / detection.height
-        ];
-        return embedding;
+        console.log('🎯 AccurateFaceTracker initialized - Count appearances, not frames');
     }
 
     resetCompletely() {
         this.trackedPersons.clear();
+        this.facePresenceState.clear();
+        this.faceAppearanceCount.clear();
         this.nextPersonId = 1;
-        this.faceAppearances.clear();
-        this.faceSignatures.clear();
-        this.lastCountTime.clear();
-        this.presenceStatus.clear();
-        this.newPersonLogCount = 0;
-        console.log('🔄 Optimized tracker reset completely');
+        console.log('🔄 Accurate tracker reset completely');
     }
 
     update(currentFaces) {
@@ -1421,17 +1395,17 @@ class OptimizedFaceTracker {
             person.framesLost++;
         }
 
-        // Giai đoạn 1: Match với persons đang được track - DỄ HƠN
+        // Xử lý từng khuôn mặt hiện tại
         for (const currentFace of currentFaces) {
             let bestMatch = null;
-            let bestScore = this.matchThreshold; // SỬ DỤNG ngưỡng thấp hơn
+            let bestScore = 0.4;
             let bestMatchId = null;
 
-            // Tìm match tốt nhất - TĂNG khoảng cách cho phép
+            // Tìm match tốt nhất
             for (const [id, knownPerson] of this.trackedPersons.entries()) {
                 if (knownPerson.seen || usedMatches.has(id)) continue;
 
-                const score = this.calculateOptimizedMatchScore(currentFace, knownPerson);
+                const score = this.calculateMatchScore(currentFace, knownPerson);
                 if (score > bestScore) {
                     bestScore = score;
                     bestMatch = knownPerson;
@@ -1447,8 +1421,8 @@ class OptimizedFaceTracker {
                 bestMatch.isTracked = true;
                 usedMatches.add(bestMatchId);
 
-                // Xử lý đếm với ít log hơn
-                this.handleOptimizedFaceCounting(bestMatch);
+                // XỬ LÝ ĐẾM XUẤT HIỆN
+                this.handleAppearanceCounting(bestMatchId);
 
                 results.push({
                     id: bestMatchId,
@@ -1457,51 +1431,117 @@ class OptimizedFaceTracker {
                     y: bestMatch.y,
                     width: bestMatch.width,
                     height: bestMatch.height,
-                    confidence: bestMatch.confidence
+                    confidence: bestMatch.confidence,
+                    appearanceCount: this.faceAppearanceCount.get(bestMatchId) || 1
                 });
 
             } else {
-                // Tạo person mới với log hạn chế
+                // Tạo person mới
                 const newPerson = this.createNewPerson(currentFace);
-                this.trackedPersons.set(newPerson.id, newPerson);
+                const newPersonId = newPerson.id;
+                this.trackedPersons.set(newPersonId, newPerson);
 
-                // Đếm ngay lần đầu tiên với log được kiểm soát
-                this.handleFirstAppearanceOptimized(newPerson);
+                // KHỞI TẠO ĐẾM XUẤT HIỆN LẦN ĐẦU
+                this.initializeAppearanceCounting(newPersonId);
 
                 results.push({
-                    id: newPerson.id,
+                    id: newPersonId,
                     isNew: true,
                     x: currentFace.x,
                     y: currentFace.y,
                     width: currentFace.width,
                     height: currentFace.height,
-                    confidence: currentFace.confidence
+                    confidence: currentFace.confidence,
+                    appearanceCount: 1
                 });
             }
         }
 
-        // Dọn dẹp persons mất tích - ÍT AGGRESSIVE HƠN
-        this.optimizedCleanupLostPersons();
+        // XỬ LÝ KHUÔN MẶT BIẾN MẤT
+        this.handleDisappearedFaces();
+
+        // Dọn dẹp persons mất tích lâu
+        this.cleanupLostPersons();
 
         return results;
     }
 
-    // PHƯƠNG THỨC MATCHING ĐƯỢC TỐI ƯU
-    calculateOptimizedMatchScore(currentFace, knownPerson) {
-        // Tính khoảng cách với ngưỡng cao hơn
+    // KHỞI TẠO ĐẾM XUẤT HIỆN CHO KHUÔN MẶT MỚI
+    initializeAppearanceCounting(personId) {
+        this.facePresenceState.set(personId, {
+            isInFrame: true,
+            lastExitTime: 0,
+            lastEnterTime: Date.now()
+        });
+        this.faceAppearanceCount.set(personId, 1);
+
+        const now = Date.now();
+        if (now - this.lastLogTime > this.logInterval) {
+            console.log(`🎯 NEW FACE: Person ${personId} - First appearance`);
+            this.lastLogTime = now;
+        }
+    }
+
+    // XỬ LÝ ĐẾM KHI KHUÔN MẶT XUẤT HIỆN LẠI
+    handleAppearanceCounting(personId) {
+        const presenceState = this.facePresenceState.get(personId);
+        const now = Date.now();
+
+        if (!presenceState) {
+            // Trường hợp khẩn cấp - khởi tạo lại
+            this.initializeAppearanceCounting(personId);
+            return;
+        }
+
+        if (!presenceState.isInFrame) {
+            // Khuôn mặt vừa quay lại khung hình - ĐẾM LẦN MỚI
+            presenceState.isInFrame = true;
+            presenceState.lastEnterTime = now;
+
+            const currentCount = this.faceAppearanceCount.get(personId) || 0;
+            const newCount = currentCount + 1;
+            this.faceAppearanceCount.set(personId, newCount);
+
+            if (now - this.lastLogTime > this.logInterval) {
+                console.log(`🔄 RE-APPEAR: Person ${personId} - Appearance #${newCount}`);
+                this.lastLogTime = now;
+            }
+        }
+        // Nếu đang trong frame thì không đếm gì thêm
+    }
+
+    // XỬ LÝ KHUÔN MẶT BIẾN MẤT
+    handleDisappearedFaces() {
+        const now = Date.now();
+
+        for (const [personId, person] of this.trackedPersons.entries()) {
+            const presenceState = this.facePresenceState.get(personId);
+
+            if (!presenceState) continue;
+
+            if (!person.seen && presenceState.isInFrame) {
+                // Khuôn mặt vừa biến mất khỏi frame
+                presenceState.isInFrame = false;
+                presenceState.lastExitTime = now;
+
+                if (now - this.lastLogTime > this.logInterval) {
+                    console.log(`👋 DISAPPEAR: Person ${personId} left frame`);
+                    this.lastLogTime = now;
+                }
+            }
+        }
+    }
+
+    calculateMatchScore(currentFace, knownPerson) {
         const distance = Math.sqrt(
             Math.pow(currentFace.x - knownPerson.x, 2) +
             Math.pow(currentFace.y - knownPerson.y, 2)
         );
 
-        // GIẢM ảnh hưởng của distance
-        const distanceScore = Math.max(0, 1 - distance / this.maxMatchDistance);
-
-        // TĂNG trọng số của size similarity
+        const distanceScore = Math.max(0, 1 - distance / 120);
         const sizeSimilarity = this.calculateSizeSimilarity(currentFace, knownPerson);
 
-        // TĂNG trọng số cho kích thước, GIẢM cho khoảng cách
-        return (distanceScore * 0.5) + (sizeSimilarity * 0.5);
+        return (distanceScore * 0.6) + (sizeSimilarity * 0.4);
     }
 
     calculateSizeSimilarity(face1, face2) {
@@ -1513,28 +1553,11 @@ class OptimizedFaceTracker {
     }
 
     updatePersonData(person, face) {
-        // TĂNG smoothing để ổn định hơn
-        person.x = this.lerp(person.x, face.x, 0.2); // Giảm từ 0.3 → 0.2
-        person.y = this.lerp(person.y, face.y, 0.2);
-        person.width = this.lerp(person.width, face.width, 0.15); // Giảm từ 0.2 → 0.15
-        person.height = this.lerp(person.height, face.height, 0.15);
+        person.x = this.lerp(person.x, face.x, 0.3);
+        person.y = this.lerp(person.y, face.y, 0.3);
+        person.width = this.lerp(person.width, face.width, 0.2);
+        person.height = this.lerp(person.height, face.height, 0.2);
         person.lastSeen = Date.now();
-        person.detectionCount = (person.detectionCount || 0) + 1;
-
-        // Cập nhật embedding với smoothing thấp hơn
-        if (face.embedding) {
-            if (!person.embedding) {
-                person.embedding = face.embedding;
-            } else {
-                for (let i = 0; i < person.embedding.length; i++) {
-                    person.embedding[i] = this.lerp(
-                        person.embedding[i],
-                        face.embedding[i],
-                        0.05 // Giảm từ 0.1 → 0.05
-                    );
-                }
-            }
-        }
     }
 
     createNewPerson(face) {
@@ -1547,80 +1570,27 @@ class OptimizedFaceTracker {
             width: face.width,
             height: face.height,
             confidence: face.confidence,
-            embedding: face.embedding,
             firstSeen: Date.now(),
             lastSeen: Date.now(),
-            detectionCount: 1,
             isTracked: true,
-            framesLost: 0
+            framesLost: 0,
+            seen: true
         };
 
         return personData;
     }
 
-    // XỬ LÝ FIRST APPEARANCE VỚI LOG ĐƯỢC KIỂM SOÁT
-    handleFirstAppearanceOptimized(person) {
-        const now = Date.now();
-
-        // GIỚI HẠN log new person
-        this.newPersonLogCount++;
-        if (this.newPersonLogCount <= 3 || now - this.lastLogTime > this.logInterval) {
-            console.log(`✅ FIRST COUNT: Person ${person.id} - Total: 1`);
-            this.lastLogTime = now;
-        }
-
-        const signature = this.getFaceSignature(person);
-        this.faceSignatures.set(person.id, signature);
-
-        this.faceAppearances.set(person.id, 1);
-        this.lastCountTime.set(person.id, now);
-        this.presenceStatus.set(person.id, true);
-    }
-
-    // XỬ LÝ FACE COUNTING VỚI ÍT LOG HƠN
-    handleOptimizedFaceCounting(person) {
-        const now = Date.now();
-        const lastCount = this.lastCountTime.get(person.id) || 0;
-
-        if (now - lastCount < this.minCountInterval) {
-            return;
-        }
-
-        const currentCount = this.faceAppearances.get(person.id) || 0;
-        this.faceAppearances.set(person.id, currentCount + 1);
-        this.lastCountTime.set(person.id, now);
-
-        // CHỈ log mỗi 2 giây hoặc khi có sự kiện quan trọng
-        if (now - this.lastLogTime > this.logInterval || currentCount % 5 === 0) {
-            console.log(`🔄 RE-COUNT: Person ${person.id} - Total: ${currentCount + 1}`);
-            this.lastLogTime = now;
-        }
-    }
-
-    getFaceSignature(person) {
-        if (!person.embedding) {
-            return `pos_${Math.round(person.x / 25)}_${Math.round(person.y / 25)}`; // Tăng grid size
-        }
-
-        const significantValues = person.embedding.slice(0, 3).map(val =>
-            Math.round(val * 4) / 4 // Giảm độ chính xác
-        );
-
-        return `emb_${significantValues.join('_')}`;
-    }
-
-    // DỌN DẸP ÍT AGGRESSIVE HƠN
-    optimizedCleanupLostPersons() {
-        const now = Date.now();
-
+    cleanupLostPersons() {
         for (const [id, person] of this.trackedPersons.entries()) {
             if (person.framesLost > this.maxFramesLost) {
-                // CHỈ log nếu đã lâu không log
+                const now = Date.now();
                 if (now - this.lastLogTime > this.logInterval) {
-                    console.log(`🗑️ Removing lost person: ID ${id} (${person.framesLost} frames lost)`);
+                    console.log(`🗑️ Removing lost person: ID ${id}`);
                     this.lastLogTime = now;
                 }
                 this.trackedPersons.delete(id);
+                this.facePresenceState.delete(id);
+                // GIỮ LẠI count data trong faceAppearanceCount để thống kê tổng
             }
         }
     }
@@ -1629,26 +1599,20 @@ class OptimizedFaceTracker {
         return start * (1 - factor) + end * factor;
     }
 
-    // CÁC PHƯƠNG THỨC GETTER
-    getTrackedFacesCount() {
-        return Array.from(this.trackedPersons.values()).filter(person =>
-            person.isTracked
-        ).length;
-    }
-
+    // CÁC PHƯƠNG THỨC GETTER MỚI
     getCurrentPersonsCount() {
         return Array.from(this.trackedPersons.values()).filter(person =>
-            person.isTracked && person.framesLost < 10 // Chỉ tính những face còn active
+            person.isTracked && person.framesLost < 5
         ).length;
     }
 
     getUniqueFacesCount() {
-        return this.faceAppearances.size;
+        return this.faceAppearanceCount.size;
     }
 
     getTotalAppearances() {
         let total = 0;
-        for (const count of this.faceAppearances.values()) {
+        for (const count of this.faceAppearanceCount.values()) {
             total += count;
         }
         return total;
@@ -1670,20 +1634,21 @@ class OptimizedFaceTracker {
             totalAppearances: this.getTotalAppearances(),
             uniquePersons: this.getUniqueFacesCount(),
             trackedPersons: this.trackedPersons.size,
-            optimized: true
+            countingMethod: "appearances"
         };
     }
 
-    // DEBUG METHODS VỚI ÍT LOG HƠN
+    // DEBUG METHODS
     debugFaceTracking() {
         const now = Date.now();
-        if (now - this.lastLogTime < 3000) return; // Chỉ debug mỗi 3 giây
+        if (now - this.lastLogTime < 3000) return;
 
-        console.log('🔍 OPTIMIZED TRACKER DEBUG:');
+        console.log('🔍 ACCURATE TRACKER DEBUG:');
         console.log('- Tracked persons:', this.trackedPersons.size);
         console.log('- Current in frame:', this.getCurrentPersonsCount());
         console.log('- Unique persons counted:', this.getUniqueFacesCount());
         console.log('- Total appearances:', this.getTotalAppearances());
+        console.log('- Appearance counts:', Array.from(this.faceAppearanceCount.entries()));
 
         this.lastLogTime = now;
     }
