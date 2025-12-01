@@ -190,7 +190,7 @@ class FaceDetector {
                 formattedFaces = [];
             }
 
-            // QUAN TRỌNG: LUÔN LUÔN GỌI TRACKER UPDATE, NGAY CẢ KHI KHÔNG CÓ KHUÔN MẶT
+            // LUÔN LUÔN GỌI TRACKER UPDATE, NGAY CẢ KHI KHÔNG CÓ KHUÔN MẶT
             let trackedFaces = [];
             if (this.faceTracker && typeof this.faceTracker.update === 'function') {
                 try {
@@ -200,7 +200,6 @@ class FaceDetector {
                     trackedFaces = this.getFallbackTrackedFaces(formattedFaces);
                 }
             } else {
-                console.warn('⚠️ FaceTracker not available, using fallback');
                 trackedFaces = this.getFallbackTrackedFaces(formattedFaces);
             }
 
@@ -212,17 +211,20 @@ class FaceDetector {
                     console.error('❌ Error creating face embeddings:', embeddingError);
                 }
 
+                // VẼ BOUNDING BOX (luôn vẽ dù có tracking hay không)
                 this.drawFaceDetections(formattedFaces, trackedFaces);
 
+                // CHỈ update tracking stats nếu đang tracking
                 if (this.isTracking) {
                     this.updateTrackingStats(trackedFaces);
                 } else {
+                    // Khi không tracking, chỉ hiển thị số khuôn mặt hiện tại
                     if (this.onFaceCountUpdate) {
-                        this.onFaceCountUpdate(trackedFaces.length);
+                        this.onFaceCountUpdate(formattedFaces.length);
                     }
                 }
             } else {
-                // KHÔNG CÓ KHUÔN MẶT - VẪN VẼ UI
+                // KHÔNG CÓ KHUÔN MẶT
                 this.drawNoFacesInfo();
                 if (this.onFaceCountUpdate) {
                     this.onFaceCountUpdate(0);
@@ -566,6 +568,7 @@ class FaceDetector {
 
         let boxColor, textColor;
 
+        // KHÁC BIỆT GIỮA TRACKING VÀ NON-TRACKING
         if (this.isTracking && trackedFace && trackedFace.isTracked) {
             boxColor = '#00ff00';
             textColor = '#00ff00';
@@ -581,7 +584,7 @@ class FaceDetector {
         }
 
         this.ctx.strokeStyle = boxColor;
-        this.ctx.lineWidth = trackedFace ? 3 : 2;
+        this.ctx.lineWidth = (this.isTracking && trackedFace) ? 3 : 2;
         this.ctx.shadowBlur = 8;
         this.ctx.shadowColor = boxColor;
 
@@ -592,19 +595,18 @@ class FaceDetector {
         this.ctx.fillStyle = textColor;
         this.ctx.font = 'bold 12px Arial';
 
-        const infoText = trackedFace ?
+        const infoText = (this.isTracking && trackedFace) ?
             `Face ${trackedFace.id}` :
             `Face (${(confidence * 100).toFixed(0)}%)`;
 
         this.ctx.fillText(infoText, start[0], start[1] - 8);
 
-        // THÊM: Xử lý counting an toàn
-        if (trackedFace && this.isTracking) {
+        // CHỈ HIỂN THỊ COUNT KHI ĐANG TRACKING
+        if (this.isTracking && trackedFace) {
             let appearanceCount = 1;
 
-            // KIỂM TRA TỒN TẠI faceAppearanceHistory TRƯỚC KHI SỬ DỤNG
-            if (this.faceAppearanceHistory && typeof this.faceAppearanceHistory.get === 'function') {
-                appearanceCount = this.faceAppearanceHistory.get(trackedFace.id) || 1;
+            if (this.faceTracker && typeof this.faceTracker.faceAppearanceCount === 'object') {
+                appearanceCount = this.faceTracker.faceAppearanceCount.get(trackedFace.id) || 1;
             }
 
             const countText = `Count: ${appearanceCount}`;
@@ -973,7 +975,7 @@ class FaceDetector {
 
     drawNoFacesInfo() {
         this.ctx.save();
-        this.ctx.setTransform(1, 0, 0, 1, 0, 0); // KHÔNG flip cho text
+        this.ctx.setTransform(1, 0, 0, 1, 0, 0);
 
         this.ctx.fillStyle = '#ffffff';
         this.ctx.font = 'bold 16px Arial';
@@ -1007,35 +1009,36 @@ class FaceDetector {
         this.ctx.font = 'bold 14px Arial';
         this.ctx.textAlign = 'left';
 
-        // Lấy số khuôn mặt hiện tại với kiểm tra an toàn
+        // Lấy số khuôn mặt hiện tại
         let currentFaces = 0;
         if (this.faceTracker && typeof this.faceTracker.getCurrentPersonsCount === 'function') {
             try {
                 currentFaces = this.faceTracker.getCurrentPersonsCount();
             } catch (error) {
-                console.warn('⚠️ Error getting current persons count in drawStatusInfo:', error);
+                console.warn('⚠️ Error getting current persons count:', error);
             }
         }
 
         if (this.isTracking) {
-            this.ctx.fillText('🎭 Đang Theo Dõi (Professional)', 20, 30);
+            this.ctx.fillText('🎭 Đang Theo Dõi', 20, 30);
             this.ctx.font = '12px Arial';
             this.ctx.fillText(`Tổng lượt: ${this.totalFacesCount}`, 20, 50);
             this.ctx.fillText(`Hiện tại: ${currentFaces}`, 20, 70);
         } else if (this.stream) {
-            this.ctx.fillText('📷 Camera (Professional)', 20, 30);
+            this.ctx.fillText('📷 Camera đang chạy', 20, 30);
             this.ctx.font = '12px Arial';
             this.ctx.fillText(`Khuôn mặt: ${currentFaces}`, 20, 50);
-            this.ctx.fillText('⏸️ Sẵn sàng thống kê', 20, 70);
+            this.ctx.fillText('⏸️ Đã dừng thống kê', 20, 70);
         } else {
-            this.ctx.fillText('📷 Camera (Professional)', 20, 30);
+            this.ctx.fillText('📷 Camera đã tắt', 20, 30);
             this.ctx.font = '12px Arial';
-            this.ctx.fillText('🛑 Camera đã tắt', 20, 50);
-            this.ctx.fillText('Nhấn "Bật Camera"', 20, 70);
+            this.ctx.fillText('🛑 Nhấn "Bật Camera"', 20, 50);
+            this.ctx.fillText('để bắt đầu', 20, 70);
         }
 
         this.ctx.restore();
     }
+
 
     initializeCanvas() {
         if (!this.video || this.video.videoWidth === 0) {
@@ -1161,7 +1164,7 @@ class FaceDetector {
 
         this.isTracking = false;
 
-        // UI updates
+        // UI updates - chỉ tắt tracking indicator, không tắt camera
         const recordingStatus = document.getElementById('recordingStatus');
         if (recordingStatus) {
             recordingStatus.classList.remove('active');
@@ -1172,19 +1175,21 @@ class FaceDetector {
             this.timeInterval = null;
         }
 
+        // QUAN TRỌNG: KHÔNG dừng detection loop, chỉ dừng tracking
         // Giữ lại số liệu thống kê
         if (this.onFaceCountUpdate) this.onFaceCountUpdate(0);
         if (this.onTotalFacesUpdate) this.onTotalFacesUpdate(this.totalFacesCount);
 
-        // Đảm bảo detection loop vẫn chạy
-        if (this.isCameraOn && !this.isDetectionRunning) {
-            this.startDetectionLoop();
-        }
-
-        // Vẽ lại UI
+        // ĐẢM BẢO CAMERA VẪN HOẠT ĐỘNG VÀ VẼ LẠI
         if (this.isCameraOn) {
+            // Force redraw để xóa tracking info
             this.drawVideoFrame();
             this.drawStatusInfo();
+
+            // Đảm bảo detection loop vẫn chạy
+            if (!this.isDetectionRunning) {
+                this.startDetectionLoop();
+            }
         }
 
         this.updateButtonStates();
@@ -1193,6 +1198,7 @@ class FaceDetector {
         console.log(`📊 Tracking stopped. Total faces detected: ${this.totalFacesCount}`);
         console.log(`⏱️ Tracking duration: ${Math.floor((Date.now() - this.startTime) / 1000)} seconds`);
     }
+
 
     // Thêm phương thức để debug FPS
     getCurrentFPS() {
@@ -1247,7 +1253,7 @@ class FaceDetector {
         console.log('🛑 Stopping camera...');
         this.isDetectionRunning = false;
 
-        // Dừng tracking trước
+        // Dừng tracking trước nếu đang tracking
         if (this.isTracking) {
             this.stopTracking();
         }
@@ -1274,10 +1280,6 @@ class FaceDetector {
         if (this.timeInterval) {
             clearInterval(this.timeInterval);
             this.timeInterval = null;
-        }
-
-        if (this.isTracking) {
-            this.stopTracking();
         }
 
         if (this.ctx) {
@@ -1395,6 +1397,11 @@ class SmartFaceTracker {
         const usedMatches = new Set();
         const now = Date.now();
 
+        // NẾU KHÔNG CÓ TRACKER HOẶC ĐANG KHÔNG TRACKING, TRẢ VỀ FALLBACK
+        if (!this.isTracking) {
+            return this.getSimpleDetection(currentFaces);
+        }
+
         // Đếm frames không có khuôn mặt
         if (currentFaces.length === 0) {
             this.framesWithoutFace++;
@@ -1470,6 +1477,29 @@ class SmartFaceTracker {
         this.handleUnseenFaces(now);
 
         return results;
+    }
+
+    getSimpleDetection(currentFaces) {
+        // Chỉ trả về detection đơn giản, không tracking
+        return currentFaces.map((face, index) => ({
+            id: index + 1,
+            isNew: true,
+            x: face.x,
+            y: face.y,
+            width: face.width,
+            height: face.height,
+            confidence: face.confidence,
+            appearanceCount: 1
+        }));
+    }
+
+    // Thêm property để kiểm tra trạng thái tracking
+    setTrackingStatus(isTracking) {
+        this.isTracking = isTracking;
+        if (!isTracking) {
+            // Reset một số state khi dừng tracking
+            this.framesWithoutFace = 0;
+        }
     }
 
     updateFacePosition(personId, face, now) {
