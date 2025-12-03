@@ -1,19 +1,39 @@
 const express = require('express');
 const path = require('path');
 const cors = require('cors');
-const { initializeDatabase, pool } = require('./config/database'); // ĐỔI db thành pool
+const fs = require('fs');
+require('dotenv').config(); // THÊM DÒNG NÀY
+
+// Database
+const { initializeDatabase, pool, testConnection } = require('./config/database');
+
+// Cloudinary
+const cloudinary = require('cloudinary').v2;
+
+// Cloudinary Configuration
+cloudinary.config({
+  cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
+  api_key: process.env.CLOUDINARY_API_KEY,
+  api_secret: process.env.CLOUDINARY_API_SECRET
+});
 
 const app = express();
 const PORT = process.env.PORT || 3000;
 
+// Log environment
+console.log('🌍 Environment:', process.env.NODE_ENV);
+console.log('🔗 Database URL:', process.env.DATABASE_URL ? 'Set (hidden)' : 'Not set');
+
 // Middleware
-app.use(cors());
+app.use(cors({
+  origin: process.env.CORS_ORIGIN || '*',
+  credentials: true
+}));
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 app.use(express.static(path.join(__dirname, '../public')));
 
 // Tạo thư mục uploads tạm
-const fs = require('fs');
 const uploadsDir = path.join(__dirname, 'uploads');
 if (!fs.existsSync(uploadsDir)) {
   fs.mkdirSync(uploadsDir, { recursive: true });
@@ -54,12 +74,31 @@ try {
 
 console.log('🎯 All routes configured');
 
-// Health check
-app.get('/health', (req, res) => {
-  res.json({ status: 'OK', timestamp: new Date().toISOString() });
+// Health check endpoint với database status
+app.get('/health', async (req, res) => {
+  try {
+    // Test database connection
+    const dbResult = await pool.query('SELECT NOW() as db_time');
+    
+    res.json({ 
+      status: 'OK', 
+      timestamp: new Date().toISOString(),
+      database: 'connected',
+      db_time: dbResult.rows[0].db_time,
+      environment: process.env.NODE_ENV,
+      uptime: process.uptime()
+    });
+  } catch (error) {
+    res.status(500).json({ 
+      status: 'ERROR', 
+      database: 'disconnected',
+      error: error.message,
+      timestamp: new Date().toISOString()
+    });
+  }
 });
 
-// API xóa session và video liên quan - SỬA LẠI DÙNG POOL
+// API xóa session và video liên quan
 app.delete('/api/sessions/:sessionId', async (req, res) => {
   try {
     const { sessionId } = req.params;
@@ -127,6 +166,28 @@ app.delete('/api/sessions/:sessionId', async (req, res) => {
   }
 });
 
+// Database info endpoint
+app.get('/api/database-info', async (req, res) => {
+  try {
+    const [sessionsCount, minutesCount, usersCount] = await Promise.all([
+      pool.query('SELECT COUNT(*) FROM sessions'),
+      pool.query('SELECT COUNT(*) FROM minutes'),
+      pool.query('SELECT COUNT(*) FROM users')
+    ]);
+
+    res.json({
+      database: 'Neon PostgreSQL',
+      stats: {
+        sessions: parseInt(sessionsCount.rows[0].count),
+        minutes: parseInt(minutesCount.rows[0].count),
+        users: parseInt(usersCount.rows[0].count)
+      }
+    });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // Serve frontend (SPA)
 app.get('*', (req, res) => {
   res.sendFile(path.join(__dirname, '../public/index.html'));
@@ -137,22 +198,46 @@ app.use((error, req, res, next) => {
   console.error('🚨 Server Error:', error);
   res.status(500).json({
     error: 'Internal Server Error',
-    message: error.message
+    message: error.message,
+    stack: process.env.NODE_ENV === 'development' ? error.stack : undefined
   });
 });
 
 // Initialize and start server
 async function startServer() {
   try {
+    console.log('🔧 Initializing database...');
     await initializeDatabase();
+    
+    // Test database connection
+    console.log('🔌 Testing database connection...');
+    const isConnected = await testConnection();
+    
+    if (!isConnected) {
+      console.error('❌ Database connection failed. Exiting...');
+      process.exit(1);
+    }
+    
     app.listen(PORT, '0.0.0.0', () => {
       console.log(`🚀 Server running on port ${PORT}`);
       console.log(`📊 Environment: ${process.env.NODE_ENV || 'development'}`);
+      console.log(`🗄️  Database: Neon PostgreSQL`);
+      console.log(`🌐 Health check: http://localhost:${PORT}/health`);
     });
   } catch (error) {
     console.error('💥 Failed to start server:', error);
     process.exit(1);
   }
 }
+
+// Handle uncaught exceptions
+process.on('uncaughtException', (error) => {
+  console.error('💀 Uncaught Exception:', error);
+  process.exit(1);
+});
+
+process.on('unhandledRejection', (reason, promise) => {
+  console.error('💀 Unhandled Rejection at:', promise, 'reason:', reason);
+});
 
 startServer();
