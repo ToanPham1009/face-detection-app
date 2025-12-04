@@ -3,17 +3,24 @@ services:
     name: face-detection-app
     env: node
     plan: free
-    region: singapore
+    region: singapore  # Chọn gần Vietnam
     buildCommand: npm install
     startCommand: npm start
     envVars:
       - key: NODE_ENV
         value: production
       - key: DATABASE_URL
-        value: postgresql://neondb_owner:npg_2rNdcLkuWCG9@ep-mute-mud-a197ahpv-pooler.ap-southeast-1.aws.neon.tech/face_detection_db?sslmode=require&channel_binding=require
+        fromDatabase:
+          name: face_detection_db
+          property: connectionString
       - key: CLOUDINARY_CLOUD_NAME
         value: your_cloudinary_cloud_name
       - key: CLOUDINARY_API_KEY
         value: your_cloudinary_api_key  
       - key: CLOUDINARY_API_SECRET
         value: your_cloudinary_api_secret
+
+databases:
+  - name: face_detection_db
+    plan: free
+    region: singapore

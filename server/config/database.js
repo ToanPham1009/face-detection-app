@@ -14,37 +14,100 @@ if (fs.existsSync(envPath)) {
 
 // Initialize database pool
 let pool = null;
+let retryCount = 0;
+const MAX_RETRIES = 3;
 
-if (process.env.DATABASE_URL) {
+function initializePool() {
+  if (!process.env.DATABASE_URL) {
+    console.error('❌ DATABASE_URL is not set');
+    return;
+  }
+
   try {
-    pool = new Pool({
-      connectionString: process.env.DATABASE_URL,
-      ssl: { rejectUnauthorized: false },
-      max: 10,
-      idleTimeoutMillis: 30000,
-      connectionTimeoutMillis: 5000,
-    });
+    // Log connection info (mask password)
+    const maskedUrl = process.env.DATABASE_URL.replace(/:([^:@]+)@/, ':****@');
+    console.log(`🔗 Database URL: ${maskedUrl}`);
     
+    // Parse connection string to check
+    const url = new URL(process.env.DATABASE_URL);
+    console.log(`   Host: ${url.hostname}`);
+    console.log(`   Database: ${url.pathname.substring(1)}`);
+    
+    // Add connection parameters for Neon
+    let connectionString = process.env.DATABASE_URL;
+    
+    // Ensure sslmode is set for Neon
+    if (!connectionString.includes('sslmode=')) {
+      connectionString += (connectionString.includes('?') ? '&' : '?') + 'sslmode=require';
+    }
+    
+    // Add connection limit for pooling
+    if (!connectionString.includes('connection_limit')) {
+      connectionString += (connectionString.includes('?') ? '&' : '?') + 'connection_limit=10';
+    }
+
+    pool = new Pool({
+      connectionString: connectionString,
+      ssl: {
+        rejectUnauthorized: false,
+        // For Neon specific SSL
+      },
+      max: 5, // Smaller pool for Render free tier
+      idleTimeoutMillis: 10000,
+      connectionTimeoutMillis: 10000, // Increase timeout
+      maxUses: 7500, // Prevent connection leaks
+    });
+
+    // Pool event handlers
+    pool.on('connect', () => {
+      console.log('✅ New client connected to database');
+      retryCount = 0; // Reset retry count on successful connection
+    });
+
+    pool.on('error', (err) => {
+      console.error('❌ Unexpected pool error:', err.message);
+      
+      // Retry logic
+      if (retryCount < MAX_RETRIES) {
+        retryCount++;
+        console.log(`🔄 Retrying connection (${retryCount}/${MAX_RETRIES})...`);
+        setTimeout(initializePool, 2000 * retryCount);
+      }
+    });
+
     console.log('✅ Database pool initialized');
     
-    // Test connection on startup
-    pool.connect()
-      .then(client => {
-        console.log('🔌 Database connection successful');
-        client.release();
-      })
-      .catch(err => {
-        console.error('❌ Database connection failed:', err.message);
-      });
-      
   } catch (error) {
     console.error('❌ Failed to create pool:', error.message);
+    
+    // Retry logic
+    if (retryCount < MAX_RETRIES) {
+      retryCount++;
+      console.log(`🔄 Retrying pool initialization (${retryCount}/${MAX_RETRIES})...`);
+      setTimeout(initializePool, 2000 * retryCount);
+    }
   }
-} else {
-  console.error('❌ DATABASE_URL is not set');
 }
 
-// Database functions
+// Initialize pool
+initializePool();
+
+// Database functions with retry logic
+async function testConnectionWithRetry(retries = 3) {
+  for (let i = 0; i < retries; i++) {
+    try {
+      const result = await testConnection();
+      if (result) return true;
+    } catch (error) {
+      console.log(`🔄 Connection test failed (${i + 1}/${retries}), retrying...`);
+      if (i < retries - 1) {
+        await new Promise(resolve => setTimeout(resolve, 2000 * (i + 1)));
+      }
+    }
+  }
+  return false;
+}
+
 async function testConnection() {
   if (!pool) {
     console.error('❌ Database pool not initialized');
@@ -52,21 +115,42 @@ async function testConnection() {
   }
 
   try {
+    console.log('🔌 Testing database connection...');
     const client = await pool.connect();
-    const result = await client.query('SELECT NOW()');
-    console.log('✅ Database connection test passed');
-    console.log('   Server time:', result.rows[0].now);
+    
+    // Simple query to test connection
+    const result = await client.query('SELECT NOW() as time, version() as version');
+    
+    console.log('✅ Database connection successful');
+    console.log(`   Server time: ${result.rows[0].time}`);
+    console.log(`   Version: ${result.rows[0].version.split(',')[0]}`);
+    
     client.release();
     return true;
+    
   } catch (error) {
-    console.error('❌ Database connection test failed:', error.message);
+    console.error('❌ Database connection failed:', error.message);
+    
+    // Specific error handling
+    if (error.message.includes('connection terminated')) {
+      console.log('💡 Tip: Check Neon IP whitelist and connection pooling');
+    } else if (error.message.includes('timeout')) {
+      console.log('💡 Tip: Increase connectionTimeoutMillis in pool config');
+    } else if (error.message.includes('password')) {
+      console.log('💡 Tip: Check DATABASE_URL credentials');
+    }
+    
     return false;
   }
 }
 
 async function initializeDatabase() {
-  if (!pool) {
-    throw new Error('Database pool not initialized');
+  console.log('🗄️ Starting database initialization...');
+  
+  // Test connection first
+  const isConnected = await testConnectionWithRetry();
+  if (!isConnected) {
+    throw new Error('Cannot initialize database: Connection failed after retries');
   }
 
   const client = await pool.connect();
@@ -87,6 +171,7 @@ async function initializeDatabase() {
         updated_at TIMESTAMP DEFAULT NOW()
       )
     `);
+    console.log('✅ Sessions table verified');
 
     // Create minutes table
     await client.query(`
@@ -101,6 +186,7 @@ async function initializeDatabase() {
         FOREIGN KEY (session_id) REFERENCES sessions(id) ON DELETE CASCADE
       )
     `);
+    console.log('✅ Minutes table verified');
 
     // Create users table
     await client.query(`
@@ -113,12 +199,14 @@ async function initializeDatabase() {
         updated_at TIMESTAMP DEFAULT NOW()
       )
     `);
+    console.log('✅ Users table verified');
 
     await client.query('COMMIT');
-    console.log('✅ Database tables created successfully');
+    console.log('🎉 Database initialization completed');
+    
   } catch (error) {
     await client.query('ROLLBACK');
-    console.error('❌ Error creating tables:', error);
+    console.error('❌ Error initializing database:', error.message);
     throw error;
   } finally {
     client.release();
@@ -129,6 +217,7 @@ async function initializeDatabase() {
 module.exports = {
   pool,
   testConnection,
+  testConnectionWithRetry,
   initializeDatabase,
   
   query: async (text, params) => {
