@@ -35,24 +35,11 @@ class FaceDetectionApp {
         // Khởi tạo FaceDetector với tracking cải tiến
         this.faceDetector = new FaceDetector();
 
-        // Thêm callbacks
-        this.faceDetector.setCallbacks({
-            onFaceCountUpdate: (count) => {
-                this.updateFaceCount(count);
-            },
-            onTotalFacesUpdate: (total) => {
-                this.updateTotalFaces(total);
-            },
-            onTrackingTimeUpdate: (seconds) => {
-                this.updateTrackingTime(seconds);
-            }
-        });
+        // QUAN TRỌNG: Thiết lập callbacks trực tiếp
+        this.setupFaceDetectorCallbacks();
 
         // Setup event listeners
         this.setupEventListeners();
-
-        // Setup face detector callbacks
-        this.setupFaceDetectorCallbacks();
 
         // Setup tab switching
         this.setupTabSwitching();
@@ -205,20 +192,44 @@ class FaceDetectionApp {
             'stopCamera': () => this.faceDetector.stopCamera(),
             'startTracking': () => this.startTracking(),
             'stopTracking': () => this.stopTracking(),
-            'debugButton': () => this.faceDetector.debugVideoState(),
-            'refreshDisplay': () => this.faceDetector.ensureVideoDisplay(),
+            'debugButton': () => {
+                console.log('🐛 DEBUG INFO:');
+                console.log('- faceDetector.onFaceCountUpdate:', this.faceDetector?.onFaceCountUpdate ? '✅ SET' : '❌ NOT SET');
+                console.log('- faceDetector.onTotalFacesUpdate:', this.faceDetector?.onTotalFacesUpdate ? '✅ SET' : '❌ NOT SET');
+                console.log('- faceDetector.isTracking:', this.faceDetector?.isTracking);
+                console.log('- faceDetector.totalFacesCount:', this.faceDetector?.totalFacesCount);
+
+                // Test UI update
+                const testCount = Math.floor(Math.random() * 10);
+                document.getElementById('currentFaces').textContent = testCount;
+                document.getElementById('totalFaces').textContent = testCount * 10;
+
+                alert(`🐛 DEBUG INFO\n• Callbacks set: ${this.faceDetector?.onFaceCountUpdate ? 'Yes' : 'No'}\n• Is tracking: ${this.faceDetector?.isTracking ? 'Yes' : 'No'}\n• Test values updated to UI`);
+            },
+            'refreshDisplay': () => {
+                console.log('🔄 Refreshing display...');
+                // Force update UI
+                if (this.faceDetector.onFaceCountUpdate) {
+                    this.faceDetector.onFaceCountUpdate(this.faceDetector.currentFaceCount || 0);
+                }
+                if (this.faceDetector.onTotalFacesUpdate) {
+                    this.faceDetector.onTotalFacesUpdate(this.faceDetector.totalFacesCount || 0);
+                }
+            },
             'debugFaces': () => {
-                if (this.faceDetector.faceTracker.debugFaceSignatures) {
+                if (this.faceDetector.faceTracker?.debugFaceSignatures) {
                     this.faceDetector.faceTracker.debugFaceSignatures();
                 } else {
                     console.log('❌ debugFaceSignatures not available');
+                    alert('Debug function not available');
                 }
             },
             'debugTracking': () => {
-                if (this.faceDetector.faceTracker.debugFaceTracking) {
+                if (this.faceDetector.faceTracker?.debugFaceTracking) {
                     this.faceDetector.faceTracker.debugFaceTracking();
                 } else {
                     console.log('❌ debugFaceTracking not available');
+                    alert('Debug function not available');
                 }
             }
         };
@@ -237,8 +248,28 @@ class FaceDetectionApp {
 
     async startTracking() {
         try {
+            console.log('🎬 Starting tracking...');
+
+            // Reset UI trước khi bắt đầu
+            document.getElementById('currentFaces').textContent = '0';
+            document.getElementById('totalFaces').textContent = '0';
+            document.getElementById('trackingTime').textContent = '0s';
+
+            // Hiển thị trạng thái recording
+            const recordingStatus = document.getElementById('recordingStatus');
+            if (recordingStatus) {
+                recordingStatus.style.display = 'flex';
+            }
+
             // Bắt đầu tracking trước
             this.faceDetector.startTracking();
+            console.log('✅ Face detector tracking started');
+
+            // Cập nhật nút bấm
+            document.getElementById('startTracking').disabled = true;
+            document.getElementById('stopTracking').disabled = false;
+            document.getElementById('startCamera').disabled = true;
+            document.getElementById('stopCamera').disabled = true;
 
             // Sau đó bắt đầu recording
             if (this.faceDetector.video) {
@@ -248,13 +279,13 @@ class FaceDetectionApp {
                 console.warn('⚠️ Video element not available for recording');
             }
 
-            // Đảm bảo hiển thị được vẽ lại
+            // Kiểm tra ngay lập tức xem callbacks có hoạt động không
             setTimeout(() => {
-                if (this.faceDetector.isCameraOn) {
-                    this.faceDetector.drawVideoFrame();
-                    this.faceDetector.drawStatusInfo();
-                }
-            }, 100);
+                console.log('🔍 Checking callbacks after 1 second:');
+                console.log('- onFaceCountUpdate:', typeof this.faceDetector.onFaceCountUpdate);
+                console.log('- onTotalFacesUpdate:', typeof this.faceDetector.onTotalFacesUpdate);
+                console.log('- Current tracking state:', this.faceDetector.isTracking);
+            }, 1000);
 
         } catch (error) {
             console.error('❌ Error starting tracking/recording:', error);
@@ -268,10 +299,23 @@ class FaceDetectionApp {
 
             // Dừng tracking trong faceDetector (vẫn giữ camera chạy)
             this.faceDetector.stopTracking();
+            console.log('✅ Face detector tracking stopped');
 
             // Dừng recording video
             const videoData = await this.videoManager.stopRecording();
             console.log('✅ Video recording stopped:', videoData);
+
+            // Ẩn trạng thái recording
+            const recordingStatus = document.getElementById('recordingStatus');
+            if (recordingStatus) {
+                recordingStatus.style.display = 'none';
+            }
+
+            // Cập nhật nút bấm
+            document.getElementById('startTracking').disabled = false;
+            document.getElementById('stopTracking').disabled = true;
+            document.getElementById('startCamera').disabled = false;
+            document.getElementById('stopCamera').disabled = false;
 
             if (videoData && videoData.filename) {
                 await this.saveSessionData(videoData);
@@ -281,14 +325,6 @@ class FaceDetectionApp {
                 console.log('⚠️ Session data saved without video');
             }
 
-            // QUAN TRỌNG: Đảm bảo camera vẫn hiển thị
-            setTimeout(() => {
-                if (this.faceDetector.isCameraOn) {
-                    this.faceDetector.ensureVideoDisplay();
-                    console.log('🔄 Camera display verified after stopping tracking');
-                }
-            }, 300);
-
             // HIỂN THỊ THÔNG BÁO
             this.showNotification('⏸️ Đã dừng thống kê. Camera vẫn đang chạy.', 'info');
 
@@ -296,29 +332,65 @@ class FaceDetectionApp {
             console.error('❌ Error stopping tracking/recording:', error);
             await this.saveSessionData({ filename: null });
             this.showNotification('❌ Lỗi khi dừng thống kê', 'error');
-
-            // Vẫn đảm bảo camera hiển thị ngay cả khi có lỗi
-            if (this.faceDetector.isCameraOn) {
-                this.faceDetector.ensureVideoDisplay();
-            }
         }
     }
 
     setupFaceDetectorCallbacks() {
-        this.faceDetector.onFaceCountUpdate = (count) => {
-            const element = document.getElementById('currentFaces');
-            if (element) element.textContent = count;
-        };
+        console.log('🔗 Setting up face detector callbacks...');
 
-        this.faceDetector.onTotalFacesUpdate = (count) => {
-            const element = document.getElementById('totalFaces');
-            if (element) element.textContent = count;
-        };
+        // Thiết lập callback trực tiếp cho faceDetector
+        if (this.faceDetector) {
+            this.faceDetector.onFaceCountUpdate = (count) => {
+                console.log(`📊 onFaceCountUpdate called: ${count}`);
+                const element = document.getElementById('currentFaces');
+                if (element) {
+                    element.textContent = count;
+                    // Thêm hiệu ứng visual
+                    element.classList.add('updated');
+                    setTimeout(() => element.classList.remove('updated'), 300);
+                }
+            };
 
-        this.faceDetector.onTrackingTimeUpdate = (time) => {
-            const element = document.getElementById('trackingTime');
-            if (element) element.textContent = time + 's';
-        };
+            this.faceDetector.onTotalFacesUpdate = (total) => {
+                console.log(`📊 onTotalFacesUpdate called: ${total}`);
+                const element = document.getElementById('totalFaces');
+                if (element) {
+                    element.textContent = total;
+                    // Thêm hiệu ứng visual
+                    element.classList.add('updated');
+                    setTimeout(() => element.classList.remove('updated'), 300);
+                }
+            };
+
+            this.faceDetector.onTrackingTimeUpdate = (seconds) => {
+                console.log(`⏱️ onTrackingTimeUpdate called: ${seconds}s`);
+                const element = document.getElementById('trackingTime');
+                if (element) {
+                    const minutes = Math.floor(seconds / 60);
+                    const remainingSeconds = seconds % 60;
+                    element.textContent = `${minutes}:${remainingSeconds.toString().padStart(2, '0')}`;
+                }
+            };
+
+            console.log('✅ Face detector callbacks setup complete');
+        }
+    }
+
+    // Thêm vào class FaceDetectionApp
+    debugCallbacks() {
+        console.log('🔍 DEBUG CALLBACKS:');
+        console.log('- faceDetector.onFaceCountUpdate:', this.faceDetector?.onFaceCountUpdate ? 'SET' : 'NOT SET');
+        console.log('- faceDetector.onTotalFacesUpdate:', this.faceDetector?.onTotalFacesUpdate ? 'SET' : 'NOT SET');
+        console.log('- faceDetector.onTrackingTimeUpdate:', this.faceDetector?.onTrackingTimeUpdate ? 'SET' : 'NOT SET');
+
+        console.log('- faceDetector.isTracking:', this.faceDetector?.isTracking);
+        console.log('- faceDetector.totalFacesCount:', this.faceDetector?.totalFacesCount);
+
+        // Test gọi callback thủ công
+        if (this.faceDetector?.onFaceCountUpdate) {
+            console.log('🧪 Testing callback manually...');
+            this.faceDetector.onFaceCountUpdate(5);
+        }
     }
 
     setupTabSwitching() {
