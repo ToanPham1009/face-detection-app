@@ -50,7 +50,6 @@ class FaceDetector {
         this.loadMediaPipeModel();
     }
 
-    // SỬA LẠI initializeFaceTracker - THÊM PHƯƠNG THỨC UPDATE ĐÚNG
     initializeFaceTracker() {
         this.faceTracker = {
             trackedPersons: new Map(),
@@ -66,25 +65,16 @@ class FaceDetector {
                 const frameInterval = now - this.faceTracker.lastFrameTime;
                 this.faceTracker.lastFrameTime = now;
 
-                // Reset faces cho frame hiện tại
                 this.faceTracker.currentFrameFaces.clear();
-
-                // Nếu không có detections, xử lý cleanup
-                if (!detections || detections.length === 0) {
-                    this.faceTracker.cleanupOldTracks();
-                    return [];
-                }
 
                 const trackedResults = [];
 
-                // CẬP NHẬT VÀ ĐẾM
                 detections.forEach((detection) => {
                     if (detection.confidence >= 0.5) {
                         // Tìm ID phù hợp
                         let faceId = this.faceTracker.findMatchingFaceId(detection);
 
                         if (!faceId) {
-                            // Tạo ID mới
                             faceId = `face_${this.faceTracker.nextId++}`;
                             this.faceTracker.totalUniqueFaces++;
                             console.log(`🆕 New face detected: ${faceId}`);
@@ -100,7 +90,7 @@ class FaceDetector {
                             confidence: detection.confidence
                         });
 
-                        // CẬP NHẬT BỘ ĐẾM XUẤT HIỆN
+                        // Cập nhật bộ đếm
                         const currentCount = this.faceTracker.faceAppearanceCount.get(faceId) || 0;
                         this.faceTracker.faceAppearanceCount.set(faceId, currentCount + 1);
 
@@ -315,10 +305,10 @@ class FaceDetector {
             let trackedFaces = [];
 
             // CHỈ GỌI TRACKER NẾU CÓ KHUÔN MẶT
-            if (formattedFaces.length > 0 && this.faceTracker && this.faceTracker.updateTrackedPersons) {
+            if (formattedFaces.length > 0 && this.faceTracker && this.faceTracker.update) {
                 try {
-                    // Gọi updateTrackedPersons - ĐÂY LÀ PHƯƠNG THỨC BỊ LỖI
-                    this.faceTracker.updateTrackedPersons(formattedFaces);
+                    // Gọi update - ĐÂY LÀ PHƯƠNG THỨC BỊ LỖI
+                    this.faceTracker.update(formattedFaces);
 
                     // Lấy kết quả từ tracker
                     trackedFaces = this.getTrackedFacesFromTracker(formattedFaces);
@@ -740,7 +730,18 @@ class FaceDetector {
 
         // Cập nhật tracker với các khuôn mặt mới
         if (this.isTracking && this.faceTracker && formattedFaces.length > 0) {
-            this.faceTracker.updateTrackedPersons(formattedFaces);
+            // SỬA: Gọi phương thức 'update' thay vì 'updateTrackedPersons'
+            if (typeof this.faceTracker.update === 'function') {
+                try {
+                    // Gọi tracker update và lấy kết quả
+                    const updatedTracks = this.faceTracker.update(formattedFaces);
+                    console.log(`📊 Tracker updated: ${updatedTracks.length} tracks`);
+                } catch (trackingError) {
+                    console.error('❌ Error in face tracker update:', trackingError);
+                }
+            } else {
+                console.warn('⚠️ faceTracker.update is not a function');
+            }
         }
     }
 
