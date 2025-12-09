@@ -50,19 +50,18 @@ class FaceDetector {
         this.loadMediaPipeModel();
     }
 
-    // THÊM PHƯƠNG THỨC KHỞI TẠO FACE TRACKER
-    // Trong FaceDetector
+    // SỬA LẠI initializeFaceTracker - THÊM PHƯƠNG THỨC UPDATE ĐÚNG
     initializeFaceTracker() {
         this.faceTracker = {
             trackedPersons: new Map(),
-            faceAppearanceCount: new Map(), // MAP LƯU SỐ LẦN XUẤT HIỆN
+            faceAppearanceCount: new Map(),
             totalUniqueFaces: 0,
             currentFrameFaces: new Set(),
             nextId: 1,
             lastFrameTime: Date.now(),
 
-            // CẬP NHẬT LOGIC TRACKING
-            updateTrackedPersons: (detections) => {
+            // SỬA: ĐỔI TÊN PHƯƠNG THỨC THÀNH 'update' ĐỂ PHÙ HỢP
+            update: (detections) => {
                 const now = Date.now();
                 const frameInterval = now - this.faceTracker.lastFrameTime;
                 this.faceTracker.lastFrameTime = now;
@@ -70,11 +69,19 @@ class FaceDetector {
                 // Reset faces cho frame hiện tại
                 this.faceTracker.currentFrameFaces.clear();
 
+                // Nếu không có detections, xử lý cleanup
+                if (!detections || detections.length === 0) {
+                    this.faceTracker.cleanupOldTracks();
+                    return [];
+                }
+
+                const trackedResults = [];
+
                 // CẬP NHẬT VÀ ĐẾM
                 detections.forEach((detection) => {
                     if (detection.confidence >= 0.5) {
                         // Tìm ID phù hợp
-                        let faceId = this.findMatchingFaceId(detection);
+                        let faceId = this.faceTracker.findMatchingFaceId(detection);
 
                         if (!faceId) {
                             // Tạo ID mới
@@ -99,20 +106,33 @@ class FaceDetector {
 
                         // Thêm vào frame hiện tại
                         this.faceTracker.currentFrameFaces.add(faceId);
+
+                        // Thêm vào kết quả
+                        trackedResults.push({
+                            id: faceId,
+                            isNew: currentCount === 0,
+                            x: detection.x || detection.boundingBox.start[0],
+                            y: detection.y || detection.boundingBox.start[1],
+                            width: detection.width || 100,
+                            height: detection.height || 100,
+                            confidence: detection.confidence,
+                            isTracked: true
+                        });
                     }
                 });
 
                 // Clean up old tracks
-                this.cleanupOldTracks();
+                this.faceTracker.cleanupOldTracks();
 
-                console.log(`📊 Tracking: ${this.faceTracker.currentFrameFaces.size} faces in frame`);
+                console.log(`📊 Tracking: ${trackedResults.length} faces in frame`);
+                return trackedResults;
             },
 
             findMatchingFaceId: (detection) => {
                 const detectionX = detection.x || detection.boundingBox.start[0];
                 const detectionY = detection.y || detection.boundingBox.start[1];
                 let bestMatchId = null;
-                let minDistance = 50; // Ngưỡng khoảng cách
+                let minDistance = 50;
 
                 for (const [faceId, face] of this.faceTracker.trackedPersons) {
                     const distance = Math.sqrt(
@@ -131,11 +151,12 @@ class FaceDetector {
 
             cleanupOldTracks: () => {
                 const now = Date.now();
-                const maxAge = 2000; // 2 giây
+                const maxAge = 2000;
 
                 for (const [faceId, face] of this.faceTracker.trackedPersons) {
                     if (now - face.lastSeen > maxAge) {
                         this.faceTracker.trackedPersons.delete(faceId);
+                        this.faceTracker.faceAppearanceCount.delete(faceId);
                         console.log(`🗑️ Removed old track: ${faceId}`);
                     }
                 }
@@ -272,6 +293,7 @@ class FaceDetector {
         }
     }
 
+    // TRONG handleMediaPipeResults - SỬA LỖI GỌI TRACKER
     handleMediaPipeResults(results) {
         if (!this.isDetectionRunning) return;
 
@@ -289,11 +311,17 @@ class FaceDetector {
                 formattedFaces = [];
             }
 
-            // LUÔN LUÔN GỌI TRACKER UPDATE, NGAY CẢ KHI KHÔNG CÓ KHUÔN MẶT
+            // SỬA: KIỂM TRA TRƯỚC KHI GỌI UPDATE
             let trackedFaces = [];
-            if (this.faceTracker && typeof this.faceTracker.update === 'function') {
+
+            // CHỈ GỌI TRACKER NẾU CÓ KHUÔN MẶT
+            if (formattedFaces.length > 0 && this.faceTracker && this.faceTracker.updateTrackedPersons) {
                 try {
-                    trackedFaces = this.faceTracker.update(formattedFaces);
+                    // Gọi updateTrackedPersons - ĐÂY LÀ PHƯƠNG THỨC BỊ LỖI
+                    this.faceTracker.updateTrackedPersons(formattedFaces);
+
+                    // Lấy kết quả từ tracker
+                    trackedFaces = this.getTrackedFacesFromTracker(formattedFaces);
                 } catch (trackingError) {
                     console.error('❌ Error in face tracking:', trackingError);
                     trackedFaces = this.getFallbackTrackedFaces(formattedFaces);
@@ -302,18 +330,11 @@ class FaceDetector {
                 trackedFaces = this.getFallbackTrackedFaces(formattedFaces);
             }
 
+            // VẼ KHUÔN MẶT
             if (formattedFaces.length > 0) {
-                // Tạo embeddings với error handling
-                try {
-                    this.createFaceEmbeddings(formattedFaces);
-                } catch (embeddingError) {
-                    console.error('❌ Error creating face embeddings:', embeddingError);
-                }
-
-                // VẼ BOUNDING BOX (luôn vẽ dù có tracking hay không)
                 this.drawFaceDetections(formattedFaces, trackedFaces);
 
-                // CHỈ update tracking stats nếu đang tracking
+                // CẬP NHẬT SỐ LIỆU
                 if (this.isTracking) {
                     this.updateTrackingStats(trackedFaces);
                 } else {
@@ -340,6 +361,26 @@ class FaceDetector {
                 this.drawVideoFrame();
             }
         }
+    }
+
+    // THÊM PHƯƠNG THỨC MỚI
+    getTrackedFacesFromTracker(formattedFaces) {
+        if (!this.faceTracker || !this.faceTracker.trackedPersons) {
+            return this.getFallbackTrackedFaces(formattedFaces);
+        }
+
+        return Array.from(this.faceTracker.trackedPersons.entries())
+            .filter(([faceId, face]) => face.isTracked)
+            .map(([faceId, face], index) => ({
+                id: faceId,
+                isNew: false,
+                x: face.x,
+                y: face.y,
+                width: 100, // Giá trị mặc định
+                height: 100, // Giá trị mặc định
+                confidence: face.confidence || 0.7,
+                isTracked: true
+            }));
     }
 
     getFallbackTrackedFaces(faces) {
@@ -1225,6 +1266,7 @@ class FaceDetector {
         }
     }
 
+    // SỬA LẠI startTracking
     startTracking() {
         if (!this.modelsLoaded) {
             alert('Mô hình MediaPipe chưa sẵn sàng. Vui lòng đợi...');
@@ -1240,9 +1282,14 @@ class FaceDetector {
         this.isTracking = true;
         this.sessionId = Date.now().toString();
         this.startTime = Date.now();
-        this.totalFacesCount = 0; // Reset về 0
+        this.totalFacesCount = 0;
 
-        // QUAN TRỌNG: Gọi callback để reset UI
+        // Reset tracker
+        if (this.faceTracker && this.faceTracker.resetCompletely) {
+            this.faceTracker.resetCompletely();
+        }
+
+        // Gọi callbacks để reset UI
         if (this.onFaceCountUpdate) {
             this.onFaceCountUpdate(0);
         }
@@ -1253,7 +1300,7 @@ class FaceDetector {
             this.onTrackingTimeUpdate(0);
         }
 
-        console.log('✅ Professional face tracking started - Callbacks initialized');
+        console.log('✅ Professional face tracking started');
     }
 
     stopTracking() {
