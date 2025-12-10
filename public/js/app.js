@@ -219,6 +219,17 @@ class FaceDetectionApp {
 
                 alert(`Debug Info:\nTracking: ${this.faceDetector?.isTracking ? 'ON' : 'OFF'}\nTotal Faces: ${this.faceDetector?.totalFacesCount || 0}`);
             },
+            'debugTracking': () => {
+                if (this.faceDetector?.faceTracker) {
+                    console.log('🔍 DEBUG FACE TRACKER:');
+                    console.log('- Total unique faces:', this.faceDetector.faceTracker.totalUniqueFaces);
+                    console.log('- Currently tracked:', this.faceDetector.faceTracker.currentFrameFaces?.size || 0);
+                    console.log('- Total appearances:', this.faceDetector.faceTracker.getTotalAppearances?.() || 0);
+                    console.log('- Tracked persons:', Array.from(this.faceDetector.faceTracker.trackedPersons?.entries() || []));
+                } else {
+                    console.log('❌ Face tracker not available');
+                }
+            },
             'refreshDisplay': () => {
                 console.log('🔄 Refreshing display...');
                 // Force redraw
