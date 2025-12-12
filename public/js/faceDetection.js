@@ -318,7 +318,6 @@ class FaceDetector {
         }
     }
 
-    // TRONG handleMediaPipeResults - SỬA LỖI GỌI TRACKER
     handleMediaPipeResults(results) {
         if (!this.isDetectionRunning) return;
 
@@ -336,17 +335,13 @@ class FaceDetector {
                 formattedFaces = [];
             }
 
-            // SỬA: KIỂM TRA TRƯỚC KHI GỌI UPDATE
+            // XỬ LÝ TRACKING
             let trackedFaces = [];
 
-            // CHỈ GỌI TRACKER NẾU CÓ KHUÔN MẶT
-            if (formattedFaces.length > 0 && this.faceTracker && this.faceTracker.update) {
+            if (formattedFaces.length > 0 && this.faceTracker && typeof this.faceTracker.update === 'function') {
                 try {
-                    // Gọi update - ĐÂY LÀ PHƯƠNG THỨC BỊ LỖI
-                    this.faceTracker.update(formattedFaces);
-
-                    // Lấy kết quả từ tracker
-                    trackedFaces = this.getTrackedFacesFromTracker(formattedFaces);
+                    trackedFaces = this.faceTracker.update(formattedFaces);
+                    console.log(`📊 Tracker returned ${trackedFaces.length} faces`);
                 } catch (trackingError) {
                     console.error('❌ Error in face tracking:', trackingError);
                     trackedFaces = this.getFallbackTrackedFaces(formattedFaces);
@@ -361,6 +356,7 @@ class FaceDetector {
 
                 // CẬP NHẬT SỐ LIỆU
                 if (this.isTracking) {
+                    console.log(`🔔 Calling updateTrackingStats with ${trackedFaces.length} tracked faces`);
                     this.updateTrackingStats(trackedFaces);
                 } else {
                     // Khi không tracking, chỉ hiển thị số khuôn mặt hiện tại
@@ -1464,23 +1460,28 @@ class FaceDetector {
         if (!this.isTracking) return;
 
         try {
+            console.log(`📊 updateTrackingStats called with ${trackedFaces?.length || 0} tracked faces`);
+
             let currentFaceCount = 0;
 
-            // Đếm số khuôn mặt hiện tại
             if (trackedFaces && trackedFaces.length > 0) {
                 currentFaceCount = trackedFaces.filter(face =>
                     face.confidence >= 0.5
                 ).length;
+
+                console.log(`👥 Filtered to ${currentFaceCount} high-confidence faces`);
             }
 
-            // QUAN TRỌNG: Chỉ đếm khuôn mặt MỚI
+            // QUAN TRỌNG: Đếm khuôn mặt MỚI
             const newFaces = trackedFaces?.filter(face => face.isNew) || [];
+
+            console.log(`🎯 New faces found: ${newFaces.length}, IDs: ${newFaces.map(f => f.id).join(', ')}`);
 
             if (newFaces.length > 0) {
                 this.totalFacesCount += newFaces.length;
 
                 newFaces.forEach(face => {
-                    console.log(`👤 COUNTED NEW FACE: ${face.id}`);
+                    console.log(`👤 COUNTED NEW FACE: ${face.id} (confidence: ${face.confidence})`);
                 });
 
                 console.log(`📈 Added ${newFaces.length} new face(s), Total: ${this.totalFacesCount}`);
@@ -1490,10 +1491,12 @@ class FaceDetector {
 
             // Cập nhật UI
             if (this.onFaceCountUpdate) {
+                console.log(`📞 Calling onFaceCountUpdate with: ${currentFaceCount}`);
                 this.onFaceCountUpdate(currentFaceCount);
             }
 
             if (this.onTotalFacesUpdate) {
+                console.log(`📞 Calling onTotalFacesUpdate with: ${this.totalFacesCount}`);
                 this.onTotalFacesUpdate(this.totalFacesCount);
             }
 
