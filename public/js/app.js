@@ -230,6 +230,20 @@ class FaceDetectionApp {
                     console.log('❌ Face tracker not available');
                 }
             },
+            // Trong setupEventListeners
+            'debugTracker': () => {
+                console.log('🔍 DEBUG TRACKER');
+                if (this.faceDetector?.debugTracker) {
+                    this.faceDetector.debugTracker();
+                }
+
+                // Test findMatchingFaceId với dummy data
+                if (this.faceDetector?.faceTracker?.findMatchingFaceId) {
+                    const testDetection = { x: 320, y: 240, confidence: 0.8 };
+                    const match = this.faceDetector.faceTracker.findMatchingFaceId(testDetection);
+                    console.log(`🧪 Test match result: ${match}`);
+                }
+            },
             'refreshDisplay': () => {
                 console.log('🔄 Refreshing display...');
                 // Force redraw
