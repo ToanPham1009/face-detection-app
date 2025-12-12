@@ -711,22 +711,7 @@ class FaceDetector {
             }
 
             // Tìm face được track tương ứng
-            let trackedFace = null;
-            let minDistance = Infinity;
-            let matchedFaceId = null;
-
-            for (const [faceId, tFace] of trackedFaceMap) {
-                const distance = Math.sqrt(
-                    Math.pow(startX - tFace.x, 2) +
-                    Math.pow(startY - tFace.y, 2)
-                );
-
-                if (distance < 50 && distance < minDistance) {
-                    minDistance = distance;
-                    trackedFace = tFace;
-                    matchedFaceId = faceId;
-                }
-            }
+            let trackedFace = trackedFaceMap.get(face.id);
 
             // ĐẾM KHUÔN MẶT CÓ ĐỘ TIN CẬY CAO
             if (face.confidence >= 0.5) {
@@ -736,46 +721,30 @@ class FaceDetector {
                 }
             }
 
-            this.drawBoundingBox([startX, startY], [width, height], trackedFace, face.confidence, matchedFaceId);
+            this.drawBoundingBox([startX, startY], [width, height], trackedFace, face.confidence, face.id);
             this.drawLandmarks(face.landmarks);
         });
 
-        // QUAN TRỌNG: CẬP NHẬT BỘ ĐẾM CHÍNH
-        if (this.isTracking && currentFaceCount > 0) {
-            // Tăng tổng số khuôn mặt
-            this.totalFacesCount += currentFaceCount;
+        // QUAN TRỌNG: KHÔNG TĂNG totalFacesCount Ở ĐÂY NỮA!
+        // Việc đếm đã được xử lý trong updateTrackingStats
 
-            // Cập nhật UI thông qua callback
-            if (this.onFaceCountUpdate) {
-                this.onFaceCountUpdate(currentFaceCount);
-            }
-
-            if (this.onTotalFacesUpdate) {
-                this.onTotalFacesUpdate(this.totalFacesCount);
-            }
-
+        // Chỉ cập nhật UI cho số khuôn mặt hiện tại
+        if (this.isTracking) {
             // Log để debug
-            console.log(`🎯 Detected ${currentFaceCount} faces (${highConfidenceFaces} high confidence), Total: ${this.totalFacesCount}`);
-        } else if (this.isTracking && currentFaceCount === 0) {
-            // Cập nhật về 0 nếu không có khuôn mặt
-            if (this.onFaceCountUpdate) {
-                this.onFaceCountUpdate(0);
-            }
+            console.log(`👁️ Frame: ${currentFaceCount} faces currently visible`);
+        } else if (this.onFaceCountUpdate) {
+            this.onFaceCountUpdate(currentFaceCount);
         }
 
         // Cập nhật tracker với các khuôn mặt mới
         if (this.isTracking && this.faceTracker && formattedFaces.length > 0) {
-            // SỬA: Gọi phương thức 'update' thay vì 'updateTrackedPersons'
             if (typeof this.faceTracker.update === 'function') {
                 try {
-                    // Gọi tracker update và lấy kết quả
                     const updatedTracks = this.faceTracker.update(formattedFaces);
                     console.log(`📊 Tracker updated: ${updatedTracks.length} tracks`);
                 } catch (trackingError) {
                     console.error('❌ Error in face tracker update:', trackingError);
                 }
-            } else {
-                console.warn('⚠️ faceTracker.update is not a function');
             }
         }
     }
