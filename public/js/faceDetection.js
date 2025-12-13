@@ -51,6 +51,8 @@ class FaceDetector {
     }
 
     initializeFaceTracker() {
+        const self = this;
+
         this.faceTracker = {
             trackedPersons: new Map(),
             faceAppearanceCount: new Map(),
@@ -61,7 +63,7 @@ class FaceDetector {
 
             update: (detections) => {
                 const now = Date.now();
-                const frameInterval = now - this.faceTracker.lastFrameTime;
+                const frameInterval = now - self.faceTracker.lastFrameTime;
                 this.faceTracker.lastFrameTime = now;
 
                 this.faceTracker.currentFrameFaces.clear();
@@ -131,7 +133,7 @@ class FaceDetector {
                 let minDistance = 150; // TĂNG khoảng cách matching (đã từ 50 lên 150)
                 const now = Date.now();
 
-                for (const [faceId, face] of this.faceTracker.trackedPersons) {
+                for (const [faceId, face] of self.faceTracker.trackedPersons.entries()) {
                     // Kiểm tra xem face có quá cũ không (trên 3 giây)
                     if (now - face.lastSeen > 3000) {
                         continue;
@@ -158,37 +160,37 @@ class FaceDetector {
                 const now = Date.now();
                 const maxAge = 2000;
 
-                for (const [faceId, face] of this.faceTracker.trackedPersons) {
+                for (const [faceId, face] of self.faceTracker.trackedPersons.entries()) {
                     if (now - face.lastSeen > maxAge) {
-                        this.faceTracker.trackedPersons.delete(faceId);
-                        this.faceTracker.faceAppearanceCount.delete(faceId);
+                        self.faceTracker.trackedPersons.delete(faceId);
+                        self.faceTracker.faceAppearanceCount.delete(faceId);
                         console.log(`🗑️ Removed old track: ${faceId}`);
                     }
                 }
             },
 
             getCurrentPersonsCount: () => {
-                return this.faceTracker.currentFrameFaces.size;
+                return self.faceTracker.currentFrameFaces.size;
             },
 
             getTotalAppearances: () => {
                 let total = 0;
-                for (const count of this.faceTracker.faceAppearanceCount.values()) {
+                for (const count of self.faceTracker.faceAppearanceCount.values()) {
                     total += count;
                 }
                 return total;
             },
 
             getUniqueFacesCount: () => {
-                return this.faceTracker.totalUniqueFaces;
+                return self.faceTracker.totalUniqueFaces;
             },
 
             resetCompletely: () => {
-                this.faceTracker.trackedPersons.clear();
-                this.faceTracker.faceAppearanceCount.clear();
-                this.faceTracker.totalUniqueFaces = 0;
-                this.faceTracker.currentFrameFaces.clear();
-                this.faceTracker.nextId = 1;
+                self.faceTracker.trackedPersons.clear();
+                self.faceTracker.faceAppearanceCount.clear();
+                self.faceTracker.totalUniqueFaces = 0;
+                self.faceTracker.currentFrameFaces.clear();
+                self.faceTracker.nextId = 1;
                 console.log('🔄 Face tracker completely reset');
             }
         };
@@ -259,6 +261,9 @@ class FaceDetector {
                     return `https://cdn.jsdelivr.net/npm/@mediapipe/face_detection/${file}`;
                 }
             });
+
+            await this.faceDetection.initialize(); // ← THIẾU
+            await this.faceDetection.wait();
 
             this.faceDetection.setOptions({
                 model: 'short',
@@ -1116,6 +1121,9 @@ class FaceDetector {
                     }
                 }, 5000);
             });
+
+            this.video.setAttribute('autoplay', '');
+            this.video.setAttribute('playsinline', '');
 
             this.initializeCanvas();
             await this.video.play();
