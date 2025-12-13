@@ -156,7 +156,7 @@ class FaceDetector {
 
             cleanupOldTracks: () => {
                 const now = Date.now();
-                const maxAge = 2000;
+                const maxAge = 1000;
 
                 for (const [faceId, face] of this.faceTracker.trackedPersons) {
                     if (now - face.lastSeen > maxAge) {
@@ -1535,7 +1535,7 @@ class SmartFaceTracker {
         this.canvasHeight = 480;
         this.frameMargin = 100; // Tăng margin lên
 
-        this.minDisappearanceTime = 800; // 0.8 giây
+        this.minDisappearanceTime = 500; // 0.8 giây
         this.framesWithoutFace = 0;
         this.maxFramesWithoutFace = 10; // ~0.7s không thấy mặt = biến mất
 
