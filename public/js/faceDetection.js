@@ -562,42 +562,27 @@ class FaceDetector {
 
                 let widthPx, heightPx, startXPx, startYPx;
 
+                // MediaPipe trả về tọa độ normalized (0-1)
                 if (bbox.xCenter !== undefined && bbox.yCenter !== undefined) {
                     widthPx = bbox.width * this.canvas.width;
                     heightPx = bbox.height * this.canvas.height;
 
-                    // SỬA: Không flip tọa độ X nữa, để MediaPipe tự xử lý
-                    const originalStartX = (bbox.xCenter - bbox.width / 2) * this.canvas.width;
-                    const originalStartY = (bbox.yCenter - bbox.height / 2) * this.canvas.height;
-
-                    startXPx = originalStartX; // KHÔNG flip
-                    startYPx = originalStartY;
+                    // Tính tọa độ góc trên bên trái
+                    startXPx = (bbox.xCenter - bbox.width / 2) * this.canvas.width;
+                    startYPx = (bbox.yCenter - bbox.height / 2) * this.canvas.height;
 
                 } else if (bbox.originX !== undefined && bbox.originY !== undefined) {
+                    // MediaPipe FaceDetection model mới
                     widthPx = bbox.width * this.canvas.width;
                     heightPx = bbox.height * this.canvas.height;
 
-                    startXPx = bbox.originX * this.canvas.width; // KHÔNG flip
+                    startXPx = bbox.originX * this.canvas.width;
                     startYPx = bbox.originY * this.canvas.height;
                 } else {
                     return null;
                 }
 
-                // Validate face size
-                const minFaceSize = 80;
-                const maxFaceSize = 350;
-
-                if (widthPx < minFaceSize || heightPx < minFaceSize ||
-                    widthPx > maxFaceSize || heightPx > maxFaceSize) {
-                    return null;
-                }
-
-                // Validate aspect ratio
-                const aspectRatio = widthPx / heightPx;
-                if (aspectRatio < 0.7 || aspectRatio > 1.5) {
-                    return null;
-                }
-
+                // Tính tọa độ trung tâm
                 const centerXPx = startXPx + widthPx / 2;
                 const centerYPx = startYPx + heightPx / 2;
 
@@ -615,19 +600,13 @@ class FaceDetector {
                         width: widthPx,
                         height: heightPx
                     },
-                    confidence: det.confidence || 0.8,
-                    rawConfidence: det.confidence
+                    confidence: det.confidence || 0.8
                 };
-
-                if (isNaN(faceData.x) || isNaN(faceData.y) || isNaN(faceData.width) || isNaN(faceData.height)) {
-                    return null;
-                }
 
                 return faceData;
             })
             .filter(face => face !== null);
 
-        // Áp dụng Non-Maximum Suppression
         return this.applyNonMaximumSuppression(filteredDetections);
     }
 
@@ -720,9 +699,6 @@ class FaceDetector {
             this.drawBoundingBox([startX, startY], [width, height], trackedFace, face.confidence, face.id);
             this.drawLandmarks(face.landmarks);
         });
-
-        // QUAN TRỌNG: KHÔNG TĂNG totalFacesCount Ở ĐÂY NỮA!
-        // Việc đếm đã được xử lý trong updateTrackingStats
 
         // Chỉ cập nhật UI cho số khuôn mặt hiện tại
         if (this.isTracking) {
@@ -901,7 +877,7 @@ class FaceDetector {
         }
 
         this.ctx.save();
-        this.ctx.setTransform(1, 0, 0, 1, 0, 0);
+        this.ctx.setTransform(1, 0, 0, 1, 0, 0); // KHÔNG FLIP
 
         let boxColor, textColor;
 
@@ -936,8 +912,6 @@ class FaceDetector {
         this.ctx.fillText(infoText, start[0], start[1] - 8);
 
         this.ctx.restore();
-        this.ctx.translate(this.canvas.width, 0);
-        this.ctx.scale(-1, 1);
     }
 
     drawMediaPipeLandmarks(landmarks) {
@@ -946,52 +920,53 @@ class FaceDetector {
         }
 
         this.ctx.save();
-        this.ctx.setTransform(1, 0, 0, 1, 0, 0);
+        this.ctx.setTransform(1, 0, 0, 1, 0, 0); // KHÔNG FLIP
 
         this.ctx.fillStyle = '#00ff00';
         this.ctx.strokeStyle = '#00ff00';
         this.ctx.lineWidth = 1.5;
 
+        // KHÔNG FLIP tọa độ X nữa
         landmarks.forEach((landmark) => {
-            const flippedX = this.canvas.width - (landmark.x * this.canvas.width);
+            const x = landmark.x * this.canvas.width; // KHÔNG flip
             const y = landmark.y * this.canvas.height;
 
             this.ctx.beginPath();
-            this.ctx.arc(flippedX, y, 3, 0, 2 * Math.PI);
+            this.ctx.arc(x, y, 3, 0, 2 * Math.PI);
             this.ctx.fill();
         });
 
-        // Draw face connections
+        // Vẽ connections - KHÔNG FLIP
         this.ctx.beginPath();
 
         // Right eye
-        const flippedX0 = this.canvas.width - (landmarks[0].x * this.canvas.width);
-        const flippedX1 = this.canvas.width - (landmarks[1].x * this.canvas.width);
-        this.ctx.moveTo(flippedX0, landmarks[0].y * this.canvas.height);
-        this.ctx.lineTo(flippedX1, landmarks[1].y * this.canvas.height);
+        const x0 = landmarks[0].x * this.canvas.width;
+        const x1 = landmarks[1].x * this.canvas.width;
+        this.ctx.moveTo(x0, landmarks[0].y * this.canvas.height);
+        this.ctx.lineTo(x1, landmarks[1].y * this.canvas.height);
 
         // Left eye
-        const flippedX2 = this.canvas.width - (landmarks[2].x * this.canvas.width);
-        const flippedX3 = this.canvas.width - (landmarks[3].x * this.canvas.width);
-        this.ctx.moveTo(flippedX2, landmarks[2].y * this.canvas.height);
-        this.ctx.lineTo(flippedX3, landmarks[3].y * this.canvas.height);
+        const x2 = landmarks[2].x * this.canvas.width;
+        const x3 = landmarks[3].x * this.canvas.width;
+        this.ctx.moveTo(x2, landmarks[2].y * this.canvas.height);
+        this.ctx.lineTo(x3, landmarks[3].y * this.canvas.height);
 
         // Nose
-        const flippedX4 = this.canvas.width - (landmarks[4].x * this.canvas.width);
-        this.ctx.moveTo(flippedX4 - 4, landmarks[4].y * this.canvas.height);
-        this.ctx.lineTo(flippedX4 + 4, landmarks[4].y * this.canvas.height);
-        this.ctx.moveTo(flippedX4, landmarks[4].y * this.canvas.height - 4);
-        this.ctx.lineTo(flippedX4, landmarks[4].y * this.canvas.height + 4);
+        const x4 = landmarks[4].x * this.canvas.width;
+        const noseY = landmarks[4].y * this.canvas.height;
+        this.ctx.moveTo(x4 - 4, noseY);
+        this.ctx.lineTo(x4 + 4, noseY);
+        this.ctx.moveTo(x4, noseY - 4);
+        this.ctx.lineTo(x4, noseY + 4);
 
         // Mouth
-        const flippedX5 = this.canvas.width - (landmarks[5].x * this.canvas.width);
-        this.ctx.moveTo(flippedX5 - 4, landmarks[5].y * this.canvas.height);
-        this.ctx.lineTo(flippedX5 + 4, landmarks[5].y * this.canvas.height);
+        const x5 = landmarks[5].x * this.canvas.width;
+        const mouthY = landmarks[5].y * this.canvas.height;
+        this.ctx.moveTo(x5 - 4, mouthY);
+        this.ctx.lineTo(x5 + 4, mouthY);
 
         this.ctx.stroke();
         this.ctx.restore();
-        this.ctx.translate(this.canvas.width, 0);
-        this.ctx.scale(-1, 1);
     }
 
     async startDetectionLoop() {
@@ -1249,7 +1224,7 @@ class FaceDetector {
         try {
             this.ctx.save();
             this.ctx.setTransform(1, 0, 0, 1, 0, 0);
-            this.ctx.fillStyle = '#000000';
+            //this.ctx.fillStyle = '#000000';
             this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
 
             // Vẽ video KHÔNG flip - để hiển thị đúng hướng
@@ -1264,6 +1239,7 @@ class FaceDetector {
 
         } catch (error) {
             console.error('❌ Error drawing video frame:', error);
+            this.ctx.restore();
         }
     }
 
@@ -1340,6 +1316,22 @@ class FaceDetector {
         }
 
         this.updateButtonStates();
+
+        // Reset tracker nhưng vẫn giữ camera
+        if (this.faceTracker && this.faceTracker.resetCompletely) {
+            this.faceTracker.resetCompletely();
+        }
+
+        // Force redraw để hiển thị camera (KHÔNG tắt camera)
+        if (this.isCameraOn && this.video) {
+            this.drawVideoFrame(); // Vẽ lại video
+            this.drawStatusInfo(); // Vẽ lại status
+        }
+
+        // Gọi callback để cập nhật UI
+        if (this.onFaceCountUpdate) {
+            this.onFaceCountUpdate(0); // Reset về 0
+        }
 
         // Log kết quả cuối cùng
         console.log(`📊 Tracking stopped. Total faces detected: ${this.totalFacesCount}`);
