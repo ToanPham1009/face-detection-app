@@ -380,6 +380,7 @@ class FaceDetectionApp {
 
             const response = await fetch('/api/captures/upload', {
                 method: 'POST',
+                // KHÔNG thêm headers khi dùng FormData
                 body: formData
             });
 
@@ -403,7 +404,9 @@ class FaceDetectionApp {
 
                 return imageData;
             } else {
-                throw new Error('Failed to upload image');
+                const errorText = await response.text();
+                console.error('❌ Upload failed:', errorText);
+                throw new Error('Upload failed');
             }
         } catch (error) {
             console.error('❌ Error saving image:', error);
@@ -420,7 +423,8 @@ class FaceDetectionApp {
                 source: source,
                 sessionId: this.currentSessionId || 'live',
                 timeString: new Date(timestamp).toLocaleTimeString('vi-VN'),
-                metadata: metadata
+                metadata: metadata,
+                isLocal: true // Đánh dấu là ảnh local
             };
 
             // Lưu vào local storage
