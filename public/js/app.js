@@ -5,6 +5,12 @@ class FaceDetectionApp {
 
         // Khởi tạo VideoManager
         this.videoManager = new VideoManager();
+        this.capturedImages = [];
+        this.currentSessionImages = new Map(); // Map sessionId -> images array
+        this.currentSessionId = null;
+
+        // Load từ localStorage
+        this.loadFromLocalStorage();
 
         // Đảm bảo DOM đã sẵn sàng
         if (document.readyState === 'loading') {
@@ -13,10 +19,6 @@ class FaceDetectionApp {
             this.initialize();
         }
 
-        // Thêm quản lý hình ảnh
-        this.capturedImages = [];
-        this.currentSessionImages = new Map(); // Map sessionId -> images array
-        this.currentSessionId = null;
     }
 
     initialize() {
@@ -157,6 +159,111 @@ class FaceDetectionApp {
         } finally {
             deleteBtn.innerHTML = 'Xác nhận xóa';
             deleteBtn.disabled = false;
+        }
+    }
+
+    // Thêm phương thức để load hình ảnh từ database
+    async loadCapturesForSession(sessionId) {
+        try {
+            console.log(`📷 Loading captures for session: ${sessionId}`);
+
+            const response = await fetch(`/api/captures/session/${sessionId}`);
+
+            if (response.ok) {
+                const captures = await response.json();
+                console.log(`✅ Loaded ${captures.length} captures from database`);
+
+                // Lưu vào currentSessionImages
+                this.currentSessionImages.set(sessionId, captures);
+
+                // Cập nhật localStorage
+                this.saveSessionImagesToLocalStorage(sessionId, captures);
+
+                // Hiển thị hình ảnh
+                this.displaySessionCaptures(captures);
+
+                return captures;
+            } else {
+                console.warn(`⚠️ No captures found for session: ${sessionId}`);
+                // Load từ localStorage nếu có
+                const localImages = this.currentSessionImages.get(sessionId) || [];
+                this.displaySessionCaptures(localImages);
+                return localImages;
+            }
+        } catch (error) {
+            console.error('❌ Error loading captures:', error);
+            // Fallback: load từ localStorage
+            const localImages = this.currentSessionImages.get(sessionId) || [];
+            this.displaySessionCaptures(localImages);
+            return localImages;
+        }
+    }
+
+    // Hiển thị hình ảnh trong tab history
+    displaySessionCaptures(captures) {
+        const container = document.getElementById('sessionCapturedImages');
+        if (!container) return;
+
+        if (!captures || captures.length === 0) {
+            container.innerHTML = `
+            <div class="empty-captured-images">
+                <div class="icon">📷</div>
+                <h4>Chưa có hình ảnh nào</h4>
+                <p>Chưa có hình ảnh nào được chụp từ session này</p>
+            </div>
+        `;
+            return;
+        }
+
+        container.innerHTML = '';
+
+        // Sắp xếp theo thời gian mới nhất trước
+        captures.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+
+        captures.forEach(capture => {
+            const imageElement = this.createCaptureElement(capture);
+            container.appendChild(imageElement);
+        });
+    }
+
+    // Tạo element cho ảnh capture (sửa lại từ createImageElement)
+    createCaptureElement(capture) {
+        const div = document.createElement('div');
+        div.className = 'captured-image-grid-item';
+
+        const time = new Date(capture.created_at || capture.timestamp);
+        const timeText = capture.video_time
+            ? `${time.toLocaleTimeString('vi-VN')} (⏱️ ${this.formatVideoTime(capture.video_time)})`
+            : time.toLocaleTimeString('vi-VN');
+
+        div.innerHTML = `
+        <img src="${capture.url}" alt="Captured image" loading="lazy">
+        <div class="captured-image-grid-info">
+            <div class="time">${timeText}</div>
+            <div class="source">${capture.source === 'camera' ? '📸 Chụp trực tiếp' : '🎬 Từ video'}</div>
+        </div>
+    `;
+
+        // Thêm sự kiện click để xem ảnh lớn
+        div.addEventListener('click', () => {
+            this.showImageModal(capture);
+        });
+
+        return div;
+    }
+
+    // Lưu session images vào localStorage
+    saveSessionImagesToLocalStorage(sessionId, images) {
+        try {
+            // Chỉ lưu 20 ảnh gần nhất mỗi session
+            const limitedImages = images.slice(0, 20);
+            this.currentSessionImages.set(sessionId, limitedImages);
+
+            // Lưu vào localStorage
+            const sessionArray = Array.from(this.currentSessionImages.entries());
+            localStorage.setItem('sessionImages', JSON.stringify(sessionArray));
+        } catch (error) {
+            console.error('❌ Error saving session images to localStorage:', error);
         }
     }
 
@@ -998,7 +1105,19 @@ class FaceDetectionApp {
             const videoPlayer = document.getElementById('playbackVideo');
             const videoInfo = document.getElementById('videoInfo');
 
-            // QUAN TRỌNG: Cập nhật currentSessionId và load ảnh
+            // Xóa active class từ tất cả items
+            document.querySelectorAll('.video-item').forEach(item => {
+                item.classList.remove('active');
+            });
+
+            // Thêm active class cho item được chọn
+            if (event && event.currentTarget) {
+                event.currentTarget.classList.add('active');
+            }
+
+            console.log('🎬 Playing video for session:', session.id);
+
+            // Cập nhật currentSessionId
             this.currentSessionId = session.id;
 
             // Enable nút chụp từ video
@@ -1007,35 +1126,13 @@ class FaceDetectionApp {
                 captureBtn.disabled = false;
             }
 
-            // Load ảnh của session này
-            this.loadSessionCapturedImages(session.id);
-
-            document.querySelectorAll('.video-item').forEach(item => {
-                item.classList.remove('active');
-            });
-            if (event && event.currentTarget) {
-                event.currentTarget.classList.add('active');
-            }
-
-            console.log('🎬 Playing video for session:', session.id);
-
             if (session.video_filename && session.video_filename !== 'null') {
                 videoPlayer.src = session.video_filename;
                 videoPlayer.style.display = 'block';
 
-                videoPlayer.onerror = () => {
-                    console.error('❌ Video playback failed');
-                    videoInfo.innerHTML = `
-                    <div class="no-video-selected">
-                        <div class="icon">❌</div>
-                        <div>
-                            <h4>Lỗi phát video</h4>
-                            <p>Không thể phát video từ URL: ${session.video_filename}</p>
-                            <a href="${session.video_filename}" target="_blank" style="color: #007bff;">Thử mở video trong tab mới</a>
-                        </div>
-                    </div>
-                `;
-                };
+                // Reset và play video
+                videoPlayer.currentTime = 0;
+                videoPlayer.play().catch(e => console.log('Auto-play prevented:', e));
 
                 videoInfo.innerHTML = `
                 <div class="info-item">
@@ -1059,13 +1156,8 @@ class FaceDetectionApp {
                     <span class="info-value">${this.formatDuration(session.duration || 0)}</span>
                 </div>
                 <div class="info-item" style="border-bottom: none; margin-bottom: 0; padding-bottom: 0;">
-                    <span class="info-label">Trạng thái:</span>
-                    <span class="info-value" style="color: #28a745;">✅ Video có sẵn</span>
-                </div>
-                <div style="margin-top: 15px;">
-                    <a href="${session.video_filename}" target="_blank" style="color: #007bff; text-decoration: underline;">
-                        📹 Mở video trong tab mới
-                    </a>
+                    <span class="info-label">Video:</span>
+                    <span class="info-value" style="color: #28a745;">✅ Có sẵn</span>
                 </div>
             `;
             } else {
@@ -1094,6 +1186,10 @@ class FaceDetectionApp {
                 </div>
             `;
             }
+
+            // QUAN TRỌNG: Load hình ảnh của session này
+            await this.loadCapturesForSession(session.id);
+
         } catch (error) {
             console.error('Error playing video:', error);
             const videoInfo = document.getElementById('videoInfo');
