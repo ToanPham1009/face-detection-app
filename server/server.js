@@ -1,7 +1,9 @@
 const express = require('express');
 const path = require('path');
 const cors = require('cors');
-const { initializeDatabase, pool } = require('./config/database'); // ĐỔI db thành pool
+const multer = require('multer'); // THÊM DÒNG NÀY
+const fs = require('fs'); // THÊM DÒNG NÀY
+const { initializeDatabase, pool } = require('./config/database');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -13,11 +15,67 @@ app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 app.use(express.static(path.join(__dirname, '../public')));
 
 // Tạo thư mục uploads tạm
-const fs = require('fs');
-const uploadsDir = path.join(__dirname, 'uploads');
-if (!fs.existsSync(uploadsDir)) {
-  fs.mkdirSync(uploadsDir, { recursive: true });
+const uploadsDir = path.join(__dirname, '../uploads');
+const capturesDir = path.join(uploadsDir, 'captures');
+
+[uploadsDir, capturesDir].forEach(dir => {
+  if (!fs.existsSync(dir)) {
+    fs.mkdirSync(dir, { recursive: true });
+  }
+});
+
+// CẤU HÌNH MULTER CHO CAPTURE IMAGES - THÊM PHẦN NÀY
+const imageStorage = multer.diskStorage({
+  destination: function (req, file, cb) {
+    cb(null, capturesDir);
+  },
+  filename: function (req, file, cb) {
+    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
+    const ext = path.extname(file.originalname) || '.jpg';
+    cb(null, 'capture-' + uniqueSuffix + ext);
+  }
+});
+
+const imageUpload = multer({
+  storage: imageStorage,
+  limits: {
+    fileSize: 5 * 1024 * 1024 // 5MB
+  },
+  fileFilter: function (req, file, cb) {
+    const allowedTypes = /jpeg|jpg|png|gif|webp/;
+    const extname = allowedTypes.test(path.extname(file.originalname).toLowerCase());
+    const mimetype = allowedTypes.test(file.mimetype);
+    
+    if (mimetype && extname) {
+      return cb(null, true);
+    } else {
+      cb(new Error('Chỉ chấp nhận file hình ảnh (JPEG, PNG, GIF, WebP)'));
+    }
+  }
+});
+
+// CLOUDINARY CONFIG - THÊM DÙNG REQUIRE THAY VÌ IMPORT
+let cloudinary;
+try {
+  cloudinary = require('cloudinary').v2;
+  if (process.env.CLOUDINARY_CLOUD_NAME && 
+      process.env.CLOUDINARY_API_KEY && 
+      process.env.CLOUDINARY_API_SECRET) {
+    cloudinary.config({
+      cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
+      api_key: process.env.CLOUDINARY_API_KEY,
+      api_secret: process.env.CLOUDINARY_API_SECRET
+    });
+    console.log('✅ Cloudinary configured');
+  } else {
+    console.log('⚠️ Cloudinary environment variables not set');
+  }
+} catch (error) {
+  console.log('⚠️ Cloudinary not available, using local storage');
 }
+
+// Serve uploaded files
+app.use('/uploads', express.static(uploadsDir));
 
 // Routes với try-catch và debug
 try {
@@ -41,7 +99,7 @@ try {
   app.use('/api/videos', require('./routes/videos'));
   console.log('✅ Videos routes loaded');
 } catch (error) {
-  console.error('❌ Error loading videos routes:', error);
+  console.error('❌ Error loading minutes routes:', error);
 }
 
 try {
@@ -56,10 +114,15 @@ console.log('🎯 All routes configured');
 
 // Health check
 app.get('/health', (req, res) => {
-  res.json({ status: 'OK', timestamp: new Date().toISOString() });
+  res.json({ 
+    status: 'OK', 
+    timestamp: new Date().toISOString(),
+    uploadsDir: uploadsDir,
+    capturesDir: capturesDir
+  });
 });
 
-// API xóa session và video liên quan - SỬA LẠI DÙNG POOL
+// API xóa session và video liên quan
 app.delete('/api/sessions/:sessionId', async (req, res) => {
   try {
     const { sessionId } = req.params;
@@ -76,7 +139,7 @@ app.delete('/api/sessions/:sessionId', async (req, res) => {
     }
 
     // 2. Xóa video từ Cloudinary nếu có
-    if (session.video_filename && session.video_filename !== 'null') {
+    if (session.video_filename && session.video_filename !== 'null' && cloudinary) {
       try {
         // Extract public_id từ URL Cloudinary
         const videoUrl = session.video_filename;
@@ -99,11 +162,15 @@ app.delete('/api/sessions/:sessionId', async (req, res) => {
       }
     }
 
-    // 3. Xóa dữ liệu minutes liên quan
+    // 3. Xóa captures liên quan
+    const capturesDelete = await pool.query('DELETE FROM captures WHERE session_id = $1', [sessionId]);
+    console.log(`✅ Đã xóa ${capturesDelete.rowCount} bản ghi captures`);
+
+    // 4. Xóa dữ liệu minutes liên quan
     const minutesDelete = await pool.query('DELETE FROM minutes WHERE session_id = $1', [sessionId]);
     console.log(`✅ Đã xóa ${minutesDelete.rowCount} bản ghi minutes`);
 
-    // 4. Xóa session
+    // 5. Xóa session
     const sessionDelete = await pool.query('DELETE FROM sessions WHERE id = $1', [sessionId]);
 
     if (sessionDelete.rowCount > 0) {
@@ -127,6 +194,131 @@ app.delete('/api/sessions/:sessionId', async (req, res) => {
   }
 });
 
+// API để lưu ảnh chụp - SỬA LẠI
+app.post('/api/captures/upload', imageUpload.single('image'), async (req, res) => {
+  try {
+    const file = req.file;
+    if (!file) {
+      return res.status(400).json({ error: 'No image file provided' });
+    }
+
+    console.log('📸 Received capture upload:', {
+      filename: file.filename,
+      size: file.size,
+      mimetype: file.mimetype,
+      body: req.body
+    });
+
+    let result;
+    // Upload lên Cloudinary (nếu có)
+    if (cloudinary && process.env.CLOUDINARY_CLOUD_NAME !== 'SET') {
+      try {
+        result = await cloudinary.uploader.upload(file.path, {
+          folder: 'face-detection/captures',
+          resource_type: 'image'
+        });
+        console.log('✅ Image uploaded to Cloudinary');
+      } catch (cloudinaryError) {
+        console.warn('⚠️ Cloudinary upload failed, using local:', cloudinaryError);
+        result = { 
+          url: `/uploads/captures/${file.filename}`,
+          public_id: file.filename 
+        };
+      }
+    } else {
+      // Local storage fallback
+      result = { 
+        url: `/uploads/captures/${file.filename}`,
+        public_id: file.filename 
+      };
+    }
+
+    // Lưu vào database
+    const captureData = {
+      id: req.body.timestamp || Date.now().toString(),
+      url: result.url,
+      filename: file.filename,
+      session_id: req.body.sessionId || null,
+      source: req.body.source || 'camera',
+      video_time: req.body.videoTime || null,
+      face_count: req.body.faceCount || 0,
+      created_at: new Date().toISOString()
+    };
+
+    // SỬA LẠI QUERY - DÙNG POOL.query thay vì db.run/db.all
+    await pool.query(
+      `INSERT INTO captures (id, url, filename, session_id, source, video_time, face_count, created_at) 
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+      [
+        captureData.id, 
+        captureData.url, 
+        captureData.filename, 
+        captureData.session_id,
+        captureData.source, 
+        captureData.video_time, 
+        captureData.face_count, 
+        captureData.created_at
+      ]
+    );
+
+    console.log('✅ Image saved to database:', captureData.id);
+
+    res.json({
+      success: true,
+      id: captureData.id,
+      url: captureData.url,
+      filename: captureData.filename,
+      timestamp: captureData.created_at
+    });
+
+  } catch (error) {
+    console.error('❌ Error uploading capture:', error);
+    res.status(500).json({ 
+      error: 'Error uploading image',
+      details: error.message 
+    });
+  }
+});
+
+// API để lấy ảnh theo session - SỬA LẠI
+app.get('/api/captures/session/:sessionId', async (req, res) => {
+  try {
+    const { sessionId } = req.params;
+    console.log(`📷 Fetching captures for session: ${sessionId}`);
+    
+    const result = await pool.query(
+      `SELECT * FROM captures 
+       WHERE session_id = $1 
+       ORDER BY created_at DESC`,
+      [sessionId]
+    );
+
+    res.json(result.rows);
+  } catch (error) {
+    console.error('❌ Error fetching captures:', error);
+    res.status(500).json({ 
+      error: 'Error fetching captures',
+      details: error.message 
+    });
+  }
+});
+
+// API để lấy tất cả ảnh chụp gần đây
+app.get('/api/captures/recent', async (req, res) => {
+  try {
+    const result = await pool.query(
+      `SELECT * FROM captures 
+       ORDER BY created_at DESC 
+       LIMIT 20`
+    );
+
+    res.json(result.rows);
+  } catch (error) {
+    console.error('❌ Error fetching recent captures:', error);
+    res.status(500).json({ error: 'Error fetching recent captures' });
+  }
+});
+
 // Serve frontend (SPA)
 app.get('*', (req, res) => {
   res.sendFile(path.join(__dirname, '../public/index.html'));
@@ -141,78 +333,6 @@ app.use((error, req, res, next) => {
   });
 });
 
-// API để lưu ảnh chụp
-app.post('/api/captures/upload', upload.single('image'), async (req, res) => {
-  try {
-    const file = req.file;
-    if (!file) {
-      return res.status(400).json({ error: 'No image file provided' });
-    }
-
-    // Upload lên Cloudinary (nếu có)
-    let result;
-    if (cloudinary) {
-      result = await cloudinary.uploader.upload(file.path, {
-        folder: 'face-detection/captures',
-        resource_type: 'image'
-      });
-    } else {
-      // Local storage fallback
-      const publicUrl = `/uploads/captures/${file.filename}`;
-      result = { url: publicUrl, public_id: file.filename };
-    }
-
-    // Lưu vào database
-    const db = await getDB();
-    const captureData = {
-      id: req.body.timestamp || Date.now().toString(),
-      url: result.url,
-      filename: file.filename,
-      session_id: req.body.sessionId || null,
-      source: req.body.source || 'camera',
-      video_time: req.body.videoTime || null,
-      face_count: req.body.faceCount || 0,
-      created_at: new Date().toISOString()
-    };
-
-    await db.run(
-      `INSERT INTO captures (id, url, filename, session_id, source, video_time, face_count, created_at) 
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-      [captureData.id, captureData.url, captureData.filename, captureData.session_id,
-      captureData.source, captureData.video_time, captureData.face_count, captureData.created_at]
-    );
-
-    res.json({
-      success: true,
-      id: captureData.id,
-      url: captureData.url,
-      filename: captureData.filename
-    });
-
-  } catch (error) {
-    console.error('Error uploading capture:', error);
-    res.status(500).json({ error: 'Error uploading image' });
-  }
-});
-
-// API để lấy ảnh theo session
-app.get('/api/captures/session/:sessionId', async (req, res) => {
-  try {
-    const db = await getDB();
-    const captures = await db.all(
-      `SELECT * FROM captures 
-             WHERE session_id = ? 
-             ORDER BY created_at DESC`,
-      [req.params.sessionId]
-    );
-
-    res.json(captures);
-  } catch (error) {
-    console.error('Error fetching captures:', error);
-    res.status(500).json({ error: 'Error fetching captures' });
-  }
-});
-
 // Initialize and start server
 async function startServer() {
   try {
@@ -220,6 +340,8 @@ async function startServer() {
     app.listen(PORT, '0.0.0.0', () => {
       console.log(`🚀 Server running on port ${PORT}`);
       console.log(`📊 Environment: ${process.env.NODE_ENV || 'development'}`);
+      console.log(`📁 Uploads directory: ${uploadsDir}`);
+      console.log(`📸 Captures directory: ${capturesDir}`);
     });
   } catch (error) {
     console.error('💥 Failed to start server:', error);

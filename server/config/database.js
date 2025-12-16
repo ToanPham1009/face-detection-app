@@ -27,20 +27,20 @@ function initializePool() {
     // Log connection info (mask password)
     const maskedUrl = process.env.DATABASE_URL.replace(/:([^:@]+)@/, ':****@');
     console.log(`🔗 Database URL: ${maskedUrl}`);
-    
+
     // Parse connection string to check
     const url = new URL(process.env.DATABASE_URL);
     console.log(`   Host: ${url.hostname}`);
     console.log(`   Database: ${url.pathname.substring(1)}`);
-    
+
     // Add connection parameters for Neon
     let connectionString = process.env.DATABASE_URL;
-    
+
     // Ensure sslmode is set for Neon
     if (!connectionString.includes('sslmode=')) {
       connectionString += (connectionString.includes('?') ? '&' : '?') + 'sslmode=require';
     }
-    
+
     // Add connection limit for pooling
     if (!connectionString.includes('connection_limit')) {
       connectionString += (connectionString.includes('?') ? '&' : '?') + 'connection_limit=10';
@@ -66,7 +66,7 @@ function initializePool() {
 
     pool.on('error', (err) => {
       console.error('❌ Unexpected pool error:', err.message);
-      
+
       // Retry logic
       if (retryCount < MAX_RETRIES) {
         retryCount++;
@@ -76,10 +76,10 @@ function initializePool() {
     });
 
     console.log('✅ Database pool initialized');
-    
+
   } catch (error) {
     console.error('❌ Failed to create pool:', error.message);
-    
+
     // Retry logic
     if (retryCount < MAX_RETRIES) {
       retryCount++;
@@ -117,20 +117,20 @@ async function testConnection() {
   try {
     console.log('🔌 Testing database connection...');
     const client = await pool.connect();
-    
+
     // Simple query to test connection
     const result = await client.query('SELECT NOW() as time, version() as version');
-    
+
     console.log('✅ Database connection successful');
     console.log(`   Server time: ${result.rows[0].time}`);
     console.log(`   Version: ${result.rows[0].version.split(',')[0]}`);
-    
+
     client.release();
     return true;
-    
+
   } catch (error) {
     console.error('❌ Database connection failed:', error.message);
-    
+
     // Specific error handling
     if (error.message.includes('connection terminated')) {
       console.log('💡 Tip: Check Neon IP whitelist and connection pooling');
@@ -139,14 +139,14 @@ async function testConnection() {
     } else if (error.message.includes('password')) {
       console.log('💡 Tip: Check DATABASE_URL credentials');
     }
-    
+
     return false;
   }
 }
 
 async function initializeDatabase() {
   console.log('🗄️ Starting database initialization...');
-  
+
   // Test connection first
   const isConnected = await testConnectionWithRetry();
   if (!isConnected) {
@@ -154,7 +154,7 @@ async function initializeDatabase() {
   }
 
   const client = await pool.connect();
-  
+
   try {
     await client.query('BEGIN');
 
@@ -201,9 +201,24 @@ async function initializeDatabase() {
     `);
     console.log('✅ Users table verified');
 
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS captures (
+          id TEXT PRIMARY KEY,
+          url TEXT NOT NULL,
+          filename TEXT NOT NULL,
+          session_id TEXT,
+          source TEXT NOT NULL,
+          video_time REAL,
+          face_count INTEGER DEFAULT 0,
+          created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+          FOREIGN KEY (session_id) REFERENCES sessions(id) ON DELETE CASCADE
+      )
+    `);
+    console.log('✅ captures table verified');
+
     await client.query('COMMIT');
     console.log('🎉 Database initialization completed');
-    
+
   } catch (error) {
     await client.query('ROLLBACK');
     console.error('❌ Error initializing database:', error.message);
@@ -219,12 +234,12 @@ module.exports = {
   testConnection,
   testConnectionWithRetry,
   initializeDatabase,
-  
+
   query: async (text, params) => {
     if (!pool) throw new Error('Database pool not initialized');
     return await pool.query(text, params);
   },
-  
+
   getClient: async () => {
     if (!pool) throw new Error('Database pool not initialized');
     return await pool.connect();
