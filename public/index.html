@@ -129,6 +129,14 @@
                     <button id="debugTracking" class="btn btn-warning">🐞 Debug Tracking</button>
                 </div>
                 <div class="capture-section">
+                    <div class="camera-container">
+                        <canvas id="faceCanvas"></canvas>
+                        <div class="capture-controls">
+                            <button id="captureImage" class="btn btn-capture">
+                                📸 Chụp hình hiện tại
+                            </button>
+                        </div>
+                    </div>
 
                     <div class="captured-images-preview">
                         <h3>📷 Hình đã chụp</h3>
@@ -138,10 +146,6 @@
                     </div>
                 </div>
 
-                <!-- Chỉ dùng 1 canvas duy nhất -->
-                <div class="camera-container">
-                    <canvas id="faceCanvas"></canvas>
-                </div>
 
                 <div class="stats">
                     <div class="stat-card">
