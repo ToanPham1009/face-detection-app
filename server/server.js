@@ -141,6 +141,78 @@ app.use((error, req, res, next) => {
   });
 });
 
+// API để lưu ảnh chụp
+app.post('/api/captures/upload', upload.single('image'), async (req, res) => {
+  try {
+    const file = req.file;
+    if (!file) {
+      return res.status(400).json({ error: 'No image file provided' });
+    }
+
+    // Upload lên Cloudinary (nếu có)
+    let result;
+    if (cloudinary) {
+      result = await cloudinary.uploader.upload(file.path, {
+        folder: 'face-detection/captures',
+        resource_type: 'image'
+      });
+    } else {
+      // Local storage fallback
+      const publicUrl = `/uploads/captures/${file.filename}`;
+      result = { url: publicUrl, public_id: file.filename };
+    }
+
+    // Lưu vào database
+    const db = await getDB();
+    const captureData = {
+      id: req.body.timestamp || Date.now().toString(),
+      url: result.url,
+      filename: file.filename,
+      session_id: req.body.sessionId || null,
+      source: req.body.source || 'camera',
+      video_time: req.body.videoTime || null,
+      face_count: req.body.faceCount || 0,
+      created_at: new Date().toISOString()
+    };
+
+    await db.run(
+      `INSERT INTO captures (id, url, filename, session_id, source, video_time, face_count, created_at) 
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+      [captureData.id, captureData.url, captureData.filename, captureData.session_id,
+      captureData.source, captureData.video_time, captureData.face_count, captureData.created_at]
+    );
+
+    res.json({
+      success: true,
+      id: captureData.id,
+      url: captureData.url,
+      filename: captureData.filename
+    });
+
+  } catch (error) {
+    console.error('Error uploading capture:', error);
+    res.status(500).json({ error: 'Error uploading image' });
+  }
+});
+
+// API để lấy ảnh theo session
+app.get('/api/captures/session/:sessionId', async (req, res) => {
+  try {
+    const db = await getDB();
+    const captures = await db.all(
+      `SELECT * FROM captures 
+             WHERE session_id = ? 
+             ORDER BY created_at DESC`,
+      [req.params.sessionId]
+    );
+
+    res.json(captures);
+  } catch (error) {
+    console.error('Error fetching captures:', error);
+    res.status(500).json({ error: 'Error fetching captures' });
+  }
+});
+
 // Initialize and start server
 async function startServer() {
   try {

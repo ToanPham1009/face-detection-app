@@ -12,6 +12,11 @@ class FaceDetectionApp {
         } else {
             this.initialize();
         }
+
+        // Thêm quản lý hình ảnh
+        this.capturedImages = [];
+        this.currentSessionImages = new Map(); // Map sessionId -> images array
+        this.currentSessionId = null;
     }
 
     initialize() {
@@ -230,7 +235,6 @@ class FaceDetectionApp {
                     console.log('❌ Face tracker not available');
                 }
             },
-            // Trong setupEventListeners
             'debugTracker': () => {
                 console.log('🔍 DEBUG TRACKER');
                 if (this.faceDetector?.debugTracker) {
@@ -248,6 +252,13 @@ class FaceDetectionApp {
                 console.log('🔄 Refreshing display...');
                 // Force redraw
                 this.faceDetector.ensureVideoDisplay?.();
+            },
+            'captureImage': () => {
+                this.captureFromCamera();
+            },
+
+            'captureFromVideo': () => {
+                this.captureFromVideoPlayer();
             }
         };
 
@@ -260,6 +271,366 @@ class FaceDetectionApp {
                 console.warn(`⚠️ Element not found: ${id}`);
             }
         }
+    }
+
+    // Phương thức chụp từ camera live
+    async captureFromCamera() {
+        try {
+            if (!this.faceDetector || !this.faceDetector.isCameraOn) {
+                this.showNotification('📷 Vui lòng bật camera trước khi chụp hình', 'warning');
+                return;
+            }
+
+            const canvas = document.getElementById('faceCanvas');
+            if (!canvas) {
+                throw new Error('Canvas not found');
+            }
+
+            // Tạo canvas tạm để chụp
+            const tempCanvas = document.createElement('canvas');
+            tempCanvas.width = canvas.width;
+            tempCanvas.height = canvas.height;
+            const tempCtx = tempCanvas.getContext('2d');
+
+            // Vẽ nội dung từ canvas chính
+            tempCtx.drawImage(canvas, 0, 0);
+
+            // Chuyển sang blob và lưu
+            tempCanvas.toBlob(async (blob) => {
+                const imageData = await this.saveCapturedImage(blob, 'camera');
+                this.addCapturedImageToUI(imageData, 'live');
+                this.showNotification('📸 Đã chụp hình từ camera!', 'success');
+            }, 'image/jpeg', 0.9);
+
+        } catch (error) {
+            console.error('❌ Error capturing image:', error);
+            this.showNotification('❌ Lỗi khi chụp hình: ' + error.message, 'error');
+        }
+    }
+
+    // Phương thức chụp từ video player
+    async captureFromVideoPlayer() {
+        try {
+            const videoPlayer = document.getElementById('playbackVideo');
+            if (!videoPlayer || videoPlayer.style.display === 'none') {
+                this.showNotification('📹 Vui lòng chọn và phát video trước', 'warning');
+                return;
+            }
+
+            if (videoPlayer.paused) {
+                this.showNotification('⏸️ Video đang dừng. Vui lòng phát video để chụp', 'warning');
+                return;
+            }
+
+            // Tạo canvas để chụp frame từ video
+            const canvas = document.createElement('canvas');
+            canvas.width = videoPlayer.videoWidth || 640;
+            canvas.height = videoPlayer.videoHeight || 480;
+            const ctx = canvas.getContext('2d');
+
+            // Vẽ frame hiện tại của video
+            ctx.drawImage(videoPlayer, 0, 0, canvas.width, canvas.height);
+
+            // Thêm timestamp lên ảnh
+            ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
+            ctx.fillRect(10, canvas.height - 40, 200, 30);
+            ctx.fillStyle = 'white';
+            ctx.font = '14px Arial';
+
+            const currentTime = this.formatVideoTime(videoPlayer.currentTime);
+            ctx.fillText(`⏱️ ${currentTime}`, 15, canvas.height - 20);
+
+            // Chuyển sang blob và lưu
+            canvas.toBlob(async (blob) => {
+                const imageData = await this.saveCapturedImage(blob, 'video', {
+                    videoTime: videoPlayer.currentTime,
+                    sessionId: this.currentSessionId
+                });
+                this.addCapturedImageToUI(imageData, 'session');
+                this.showNotification('📸 Đã chụp hình từ video!', 'success');
+            }, 'image/jpeg', 0.9);
+
+        } catch (error) {
+            console.error('❌ Error capturing from video:', error);
+            this.showNotification('❌ Lỗi khi chụp từ video: ' + error.message, 'error');
+        }
+    }
+
+    // Lưu hình ảnh lên server
+    async saveCapturedImage(blob, source = 'camera', metadata = {}) {
+        try {
+            const formData = new FormData();
+            const timestamp = new Date().getTime();
+            const filename = `capture_${timestamp}.jpg`;
+
+            formData.append('image', blob, filename);
+            formData.append('source', source);
+            formData.append('timestamp', timestamp);
+            formData.append('sessionId', this.currentSessionId || 'live');
+
+            // Thêm metadata nếu có
+            if (metadata.videoTime) {
+                formData.append('videoTime', metadata.videoTime);
+            }
+            if (this.faceDetector?.totalFacesCount) {
+                formData.append('faceCount', this.faceDetector.totalFacesCount);
+            }
+
+            console.log(`📤 Uploading captured image: ${filename}`);
+
+            const response = await fetch('/api/captures/upload', {
+                method: 'POST',
+                body: formData
+            });
+
+            if (response.ok) {
+                const result = await response.json();
+                console.log('✅ Image saved:', result);
+
+                const imageData = {
+                    id: result.id || timestamp,
+                    url: result.url,
+                    filename: result.filename,
+                    timestamp: timestamp,
+                    source: source,
+                    sessionId: this.currentSessionId || 'live',
+                    timeString: new Date(timestamp).toLocaleTimeString('vi-VN'),
+                    metadata: metadata
+                };
+
+                // Lưu vào local storage
+                this.saveToLocalStorage(imageData);
+
+                return imageData;
+            } else {
+                throw new Error('Failed to upload image');
+            }
+        } catch (error) {
+            console.error('❌ Error saving image:', error);
+
+            // Fallback: tạo URL tạm từ blob
+            const tempUrl = URL.createObjectURL(blob);
+            const timestamp = new Date().getTime();
+
+            const imageData = {
+                id: timestamp,
+                url: tempUrl,
+                filename: `capture_${timestamp}.jpg`,
+                timestamp: timestamp,
+                source: source,
+                sessionId: this.currentSessionId || 'live',
+                timeString: new Date(timestamp).toLocaleTimeString('vi-VN'),
+                metadata: metadata
+            };
+
+            // Lưu vào local storage
+            this.saveToLocalStorage(imageData);
+
+            return imageData;
+        }
+    }
+
+    // Lưu vào localStorage
+    saveToLocalStorage(imageData) {
+        try {
+            // Thêm vào mảng capturedImages
+            this.capturedImages.unshift(imageData); // Thêm vào đầu mảng
+
+            // Giới hạn số lượng ảnh lưu trữ
+            if (this.capturedImages.length > 50) {
+                this.capturedImages = this.capturedImages.slice(0, 50);
+            }
+
+            // Lưu theo session
+            if (imageData.sessionId && imageData.sessionId !== 'live') {
+                if (!this.currentSessionImages.has(imageData.sessionId)) {
+                    this.currentSessionImages.set(imageData.sessionId, []);
+                }
+                const sessionImages = this.currentSessionImages.get(imageData.sessionId);
+                sessionImages.unshift(imageData);
+
+                // Giới hạn 20 ảnh mỗi session
+                if (sessionImages.length > 20) {
+                    sessionImages.pop();
+                }
+            }
+
+            // Lưu vào localStorage
+            localStorage.setItem('capturedImages', JSON.stringify(this.capturedImages));
+            localStorage.setItem('sessionImages', JSON.stringify(Array.from(this.currentSessionImages.entries())));
+
+        } catch (error) {
+            console.error('❌ Error saving to localStorage:', error);
+        }
+    }
+
+    // Tải từ localStorage
+    loadFromLocalStorage() {
+        try {
+            const savedImages = localStorage.getItem('capturedImages');
+            if (savedImages) {
+                this.capturedImages = JSON.parse(savedImages);
+            }
+
+            const savedSessionImages = localStorage.getItem('sessionImages');
+            if (savedSessionImages) {
+                this.currentSessionImages = new Map(JSON.parse(savedSessionImages));
+            }
+        } catch (error) {
+            console.error('❌ Error loading from localStorage:', error);
+        }
+    }
+
+    // Thêm hình ảnh vào UI
+    addCapturedImageToUI(imageData, target = 'live') {
+        const imageElement = this.createImageElement(imageData);
+
+        if (target === 'live') {
+            const container = document.getElementById('liveCapturedImages');
+            if (container) {
+                // Thêm vào đầu danh sách
+                container.insertBefore(imageElement, container.firstChild);
+
+                // Giới hạn hiển thị 6 ảnh gần nhất
+                const maxDisplay = 6;
+                while (container.children.length > maxDisplay) {
+                    container.removeChild(container.lastChild);
+                }
+
+                // Thêm hiệu ứng
+                imageElement.classList.add('new-capture');
+                setTimeout(() => {
+                    imageElement.classList.remove('new-capture');
+                }, 1000);
+            }
+        } else if (target === 'session' && this.currentSessionId) {
+            this.loadSessionCapturedImages(this.currentSessionId);
+        }
+    }
+
+    // Tạo element hình ảnh
+    createImageElement(imageData) {
+        const div = document.createElement('div');
+        div.className = imageData.source === 'camera' ? 'captured-image-item' : 'captured-image-grid-item';
+
+        const timeText = imageData.source === 'video' && imageData.metadata?.videoTime
+            ? `${imageData.timeString} (⏱️ ${this.formatVideoTime(imageData.metadata.videoTime)})`
+            : imageData.timeString;
+
+        div.innerHTML = `
+            <img src="${imageData.url}" alt="Captured image" loading="lazy">
+            <div class="${imageData.source === 'camera' ? 'captured-image-info' : 'captured-image-grid-info'}">
+                <div class="${imageData.source === 'camera' ? 'captured-image-time' : 'time'}">
+                    ${timeText}
+                </div>
+                ${imageData.source === 'video'
+                ? `<div class="source">Từ video</div>`
+                : `<div class="captured-image-size">${imageData.source === 'camera' ? 'Chụp trực tiếp' : ''}</div>`
+            }
+            </div>
+        `;
+
+        // Thêm sự kiện click để xem ảnh lớn
+        div.addEventListener('click', () => {
+            this.showImageModal(imageData);
+        });
+
+        return div;
+    }
+
+    // Load ảnh của session
+    loadSessionCapturedImages(sessionId) {
+        const container = document.getElementById('sessionCapturedImages');
+        if (!container) return;
+
+        const sessionImages = this.currentSessionImages.get(sessionId) || [];
+
+        if (sessionImages.length === 0) {
+            container.innerHTML = `
+                <div class="empty-captured-images">
+                    <div class="icon">📷</div>
+                    <h4>Chưa có hình ảnh nào</h4>
+                    <p>Nhấn nút "Chụp từ video" để chụp hình từ video này</p>
+                </div>
+            `;
+            return;
+        }
+
+        container.innerHTML = '';
+        sessionImages.forEach(imageData => {
+            const imageElement = this.createImageElement(imageData);
+            container.appendChild(imageElement);
+        });
+    }
+
+    // Modal xem ảnh lớn
+    showImageModal(imageData) {
+        const modal = document.createElement('div');
+        modal.className = 'image-modal';
+        modal.style.cssText = `
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.9);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            z-index: 1000;
+        `;
+
+        modal.innerHTML = `
+            <div class="modal-content" style="max-width: 90%; max-height: 90%; position: relative;">
+                <button class="close-modal" style="
+                    position: absolute;
+                    top: 15px;
+                    right: 15px;
+                    background: #ff4757;
+                    color: white;
+                    border: none;
+                    width: 40px;
+                    height: 40px;
+                    border-radius: 50%;
+                    font-size: 20px;
+                    cursor: pointer;
+                    z-index: 1001;
+                ">×</button>
+                <img src="${imageData.url}" alt="Full size" style="
+                    max-width: 100%;
+                    max-height: 80vh;
+                    border-radius: 5px;
+                ">
+                <div style="color: white; text-align: center; margin-top: 15px;">
+                    <div>📅 ${new Date(imageData.timestamp).toLocaleString('vi-VN')}</div>
+                    <div>${imageData.source === 'camera' ? '📸 Chụp trực tiếp' : '🎬 Chụp từ video'}</div>
+                    ${imageData.metadata?.videoTime
+                ? `<div>⏱️ Thời gian video: ${this.formatVideoTime(imageData.metadata.videoTime)}</div>`
+                : ''
+            }
+                </div>
+            </div>
+        `;
+
+        document.body.appendChild(modal);
+
+        // Sự kiện đóng modal
+        modal.querySelector('.close-modal').addEventListener('click', () => {
+            document.body.removeChild(modal);
+        });
+
+        modal.addEventListener('click', (e) => {
+            if (e.target === modal) {
+                document.body.removeChild(modal);
+            }
+        });
+    }
+
+    // Format thời gian video
+    formatVideoTime(seconds) {
+        const mins = Math.floor(seconds / 60);
+        const secs = Math.floor(seconds % 60);
+        return `${mins}:${secs.toString().padStart(2, '0')}`;
     }
 
     // THÊM PHƯƠNG THỨC KIỂM TRA CALLBACKS
@@ -622,6 +993,18 @@ class FaceDetectionApp {
         try {
             const videoPlayer = document.getElementById('playbackVideo');
             const videoInfo = document.getElementById('videoInfo');
+
+            // QUAN TRỌNG: Cập nhật currentSessionId và load ảnh
+            this.currentSessionId = session.id;
+
+            // Enable nút chụp từ video
+            const captureBtn = document.getElementById('captureFromVideo');
+            if (captureBtn) {
+                captureBtn.disabled = false;
+            }
+
+            // Load ảnh của session này
+            this.loadSessionCapturedImages(session.id);
 
             document.querySelectorAll('.video-item').forEach(item => {
                 item.classList.remove('active');

@@ -121,11 +121,29 @@
                     <button id="stopCamera" class="btn btn-danger" disabled>⏹️ Tắt Camera</button>
                     <button id="startTracking" class="btn btn-success" disabled>🎬 Bắt đầu Theo dõi</button>
                     <button id="stopTracking" class="btn btn-warning" disabled>⏹️ Dừng Theo dõi</button>
-                    
+
                     <button id="debugButton" class="btn btn-info" style="margin-left: 10px;">🐛 Debug</button>
-                    <button id="refreshDisplay" class="btn btn-info" style="margin-left: 10px;">🔄 Refresh Display</button>
+                    <button id="refreshDisplay" class="btn btn-info" style="margin-left: 10px;">🔄 Refresh
+                        Display</button>
                     <button id="debugFaces" class="btn btn-warning" style="margin-left: 10px;">🔍 Debug Faces</button>
                     <button id="debugTracking" class="btn btn-warning">🐞 Debug Tracking</button>
+                </div>
+                <div class="capture-section">
+                    <div class="camera-container">
+                        <canvas id="faceCanvas"></canvas>
+                        <div class="capture-controls">
+                            <button id="captureImage" class="btn btn-capture">
+                                📸 Chụp hình hiện tại
+                            </button>
+                        </div>
+                    </div>
+
+                    <div class="captured-images-preview">
+                        <h3>📷 Hình đã chụp</h3>
+                        <div id="liveCapturedImages" class="captured-images-list">
+                            <!-- Hình ảnh sẽ hiển thị ở đây -->
+                        </div>
+                    </div>
                 </div>
 
                 <!-- Chỉ dùng 1 canvas duy nhất -->
@@ -166,6 +184,11 @@
                     <div class="video-player-container">
                         <div class="video-player-header">
                             <h3>🎬 Video Player</h3>
+                            <div class="video-controls">
+                                <button id="captureFromVideo" class="btn btn-capture" disabled>
+                                    📸 Chụp từ video
+                                </button>
+                            </div>
                         </div>
                         <div class="video-player-content">
                             <video id="playbackVideo" controls style="display: none;">
@@ -180,6 +203,12 @@
                                             tiết.</p>
                                     </div>
                                 </div>
+                            </div>
+                        </div>
+                        <div class="session-captured-images">
+                            <h3>📷 Hình đã chụp trong session</h3>
+                            <div id="sessionCapturedImages" class="captured-images-grid">
+                                <!-- Hình ảnh session sẽ hiển thị ở đây -->
                             </div>
                         </div>
                     </div>
@@ -560,7 +589,7 @@
         crossorigin="anonymous"></script>
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/face_detection/face_detection.js"
         crossorigin="anonymous"></script>
-        
+
 </body>
 
 </html>
