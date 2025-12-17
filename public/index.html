@@ -118,14 +118,25 @@
 
                 <!-- Thêm vào sau phần controls trong tab live-tab -->
                 <div class="voice-control-section">
-                    <div id="voiceStatus" class="voice-status">🎤 Sẵn sàng</div>
-                    <div id="voiceTranscript" class="voice-transcript">Chờ lệnh...</div>
-                    <button id="toggleVoice" class="btn btn-success">
-                        <span class="voice-icon">🎤</span> Bật voice control
+                    <div id="voiceStatus" class="voice-status">
+                        <span class="status-icon">🎤</span>
+                        <span class="status-text">Sẵn sàng</span>
+                    </div>
+                    <div id="voiceTranscript" class="voice-transcript">
+                        <span class="transcript-icon">🗣️</span>
+                        <span class="transcript-text">Chờ lệnh...</span>
+                    </div>
+                    <button id="toggleVoice" class="btn btn-success voice-toggle">
+                        <span class="voice-icon">🎤</span>
+                        <span class="voice-text">Bật voice</span>
                     </button>
                     <button id="helpVoice" class="btn btn-info">
-                        <span class="voice-icon">❓</span> Trợ giúp
+                        <span class="voice-icon">❓</span>
+                        Trợ giúp
                     </button>
+                    <div class="voice-mode">
+                        <span class="mode-badge">📣 Chế độ liên tục</span>
+                    </div>
                 </div>
 
                 <div class="controls">

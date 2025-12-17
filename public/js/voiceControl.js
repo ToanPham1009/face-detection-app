@@ -1,19 +1,23 @@
 // public/js/voiceControl.js
 class VoiceControl {
     constructor() {
-        console.log('🎤 Khởi tạo Voice Control...');
-        
+        console.log('🎤 Khởi tạo Voice Control (Continuous Mode)...');
+
         this.recognition = null;
         this.isListening = false;
-        this.shouldAutoRestart = false;
+        this.shouldAutoRestart = true; // Luôn tự động restart
         this.commands = new Map();
         this.synonyms = {};
-        
+        this.lastCommandTime = 0;
+        this.commandCooldown = 1000; // Chờ 1 giây trước khi nhận lệnh mới
+        this.isProcessing = false;
+
         this.setupSynonyms();
         this.setupCommands();
-        
+
         if (this.initialize()) {
-            console.log('✅ Voice Control đã sẵn sàng');
+            console.log('✅ Voice Control đã sẵn sàng (Continuous Mode)');
+            this.showFeedback('Voice Control sẵn sàng. Nói lệnh bất kỳ lúc nào.');
         } else {
             console.warn('⚠️ Trình duyệt không hỗ trợ Speech Recognition');
         }
@@ -21,15 +25,16 @@ class VoiceControl {
 
     setupSynonyms() {
         this.synonyms = {
-            'bật': ['mở', 'khởi động', 'start', 'kích hoạt'],
-            'tắt': ['đóng', 'dừng', 'stop', 'ngừng'],
-            'camera': ['webcam', 'máy ảnh', 'cam'],
-            'theo dõi': ['tracking', 'đếm', 'nhận diện', 'phát hiện'],
-            'chụp': ['chụp hình', 'chụp ảnh', 'capture', 'chụp lại'],
-            'lịch sử': ['history', 'video cũ', 'danh sách'],
-            'live': ['trực tiếp', 'thời gian thực', 'trực tuyến'],
-            'debug': ['gỡ lỗi', 'kiểm tra', 'test'],
-            'refresh': ['làm mới', 'tải lại', 'reload']
+            'bật': ['mở', 'khởi động', 'start', 'kích hoạt', 'cho phép'],
+            'tắt': ['đóng', 'dừng', 'stop', 'ngừng', 'kết thúc'],
+            'camera': ['webcam', 'máy ảnh', 'cam', 'camera'],
+            'theo dõi': ['tracking', 'đếm', 'nhận diện', 'phát hiện', 'theo dấu'],
+            'chụp': ['chụp hình', 'chụp ảnh', 'capture', 'chụp lại', 'chụp nhanh'],
+            'lịch sử': ['history', 'video cũ', 'danh sách', 'quá khứ'],
+            'live': ['trực tiếp', 'thời gian thực', 'trực tuyến', 'hiện tại'],
+            'debug': ['gỡ lỗi', 'kiểm tra', 'test', 'debug'],
+            'refresh': ['làm mới', 'tải lại', 'reload', 'refresh'],
+            'giúp': ['trợ giúp', 'hỗ trợ', 'hướng dẫn', 'giúp đỡ']
         };
     }
 
@@ -44,7 +49,8 @@ class VoiceControl {
             'xem lịch sử': 'showHistory',
             'quay lại live': 'showLive',
             'debug': 'debug',
-            'refresh': 'refresh'
+            'refresh': 'refresh',
+            'trợ giúp': 'showHelp'
         };
 
         // Thêm base commands
@@ -58,11 +64,11 @@ class VoiceControl {
 
     generateCommandVariants() {
         const baseCommands = Array.from(this.commands.keys());
-        
+
         baseCommands.forEach(baseCommand => {
             const action = this.commands.get(baseCommand);
             const variants = this.createVariants(baseCommand);
-            
+
             variants.forEach(variant => {
                 if (!this.commands.has(variant)) {
                     this.commands.set(variant, action);
@@ -74,14 +80,14 @@ class VoiceControl {
     createVariants(text) {
         const variants = new Set();
         const words = text.split(' ');
-        
+
         // Thêm các biến thể đơn giản
         variants.add(`xin ${text}`);
         variants.add(`hãy ${text}`);
         variants.add(`${text} đi`);
         variants.add(`${text} ngay`);
         variants.add(`${text} giúp tôi`);
-        
+
         // Tạo biến thể từ synonyms
         for (let i = 0; i < words.length; i++) {
             const word = words[i];
@@ -93,50 +99,70 @@ class VoiceControl {
                 });
             }
         }
-        
+
         // Thêm các cách nói thông dụng
         if (text.includes('bật camera')) {
             variants.add('bật cam');
             variants.add('mở camera');
             variants.add('khởi động webcam');
         }
-        
+
         if (text.includes('tắt camera')) {
             variants.add('tắt cam');
             variants.add('đóng camera');
             variants.add('ngừng webcam');
         }
-        
+
         if (text.includes('chụp hình')) {
             variants.add('chụp ảnh');
             variants.add('chụp lại');
             variants.add('capture');
         }
-        
+
         return Array.from(variants);
     }
 
     executeAction(actionName) {
         console.log(`🎯 Thực hiện action: ${actionName}`);
-        
+
         const actions = {
-            'startCamera': () => this.clickButton('startCamera'),
-            'stopCamera': () => this.clickButton('stopCamera'),
-            'startTracking': () => this.clickButton('startTracking'),
-            'stopTracking': () => this.clickButton('stopTracking'),
-            'captureImage': () => this.clickButton('captureImage'),
+            'startCamera': () => this.simulateClick('startCamera'),
+            'stopCamera': () => this.simulateClick('stopCamera'),
+            'startTracking': () => this.simulateClick('startTracking'),
+            'stopTracking': () => this.simulateClick('stopTracking'),
+            'captureImage': () => this.simulateClick('captureImage'),
             'showHistory': () => this.switchTab('history'),
             'showLive': () => this.switchTab('live'),
-            'debug': () => this.clickButton('debugButton'),
-            'refresh': () => this.clickButton('refreshDisplay')
+            'debug': () => this.simulateClick('debugButton'),
+            'refresh': () => this.simulateClick('refreshDisplay'),
+            'showHelp': () => this.showHelp()
         };
-        
+
         if (actions[actionName]) {
-            actions[actionName]();
-            this.showFeedback(`Đã ${actionName.replace(/([A-Z])/g, ' $1').toLowerCase()}`);
+            return actions[actionName]();
+        }
+
+        return false;
+    }
+
+    simulateClick(buttonId) {
+        const button = document.getElementById(buttonId);
+        if (button && !button.disabled) {
+            console.log(`🖱️ Simulating click: ${buttonId}`);
+
+            // Kích hoạt sự kiện click
+            button.click();
+
+            // Thêm hiệu ứng visual
+            button.classList.add('voice-activated');
+            setTimeout(() => {
+                button.classList.remove('voice-activated');
+            }, 500);
+
             return true;
         }
-        
+
+        console.warn(`⚠️ Button ${buttonId} not found or disabled`);
         return false;
     }
 
@@ -153,10 +179,21 @@ class VoiceControl {
 
     switchTab(tabName) {
         if (window.faceDetectionApp && window.faceDetectionApp.switchTab) {
+            console.log(`📱 Switching to tab: ${tabName}`);
             window.faceDetectionApp.switchTab(tabName);
-            console.log(`✅ Switched to tab: ${tabName}`);
+
+            // Cập nhật UI
+            const tabButtons = document.querySelectorAll('.tab-button');
+            tabButtons.forEach(btn => {
+                if (btn.dataset.tab === tabName) {
+                    btn.classList.add('voice-activated');
+                    setTimeout(() => btn.classList.remove('voice-activated'), 500);
+                }
+            });
+
             return true;
         }
+
         console.warn('⚠️ FaceDetectionApp not available');
         return false;
     }
@@ -164,76 +201,96 @@ class VoiceControl {
     initialize() {
         // Kiểm tra trình duyệt hỗ trợ
         if (!('webkitSpeechRecognition' in window) && !('SpeechRecognition' in window)) {
+            this.showFeedback('Trình duyệt không hỗ trợ nhận diện giọng nói');
             return false;
         }
 
         const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
         this.recognition = new SpeechRecognition();
-        
-        // Cấu hình
-        this.recognition.continuous = true;
-        this.recognition.interimResults = true;
+
+        // CẤU HÌNH QUAN TRỌNG: ĐỂ NHẬN LỆNH LIÊN TỤC
+        this.recognition.continuous = true; // Nghe liên tục
+        this.recognition.interimResults = true; // Hiển thị kết quả tạm thời
         this.recognition.lang = 'vi-VN'; // Tiếng Việt
-        this.recognition.maxAlternatives = 1;
+        this.recognition.maxAlternatives = 3; // Tăng alternatives để chính xác hơn
+
+        // KHÔNG tự động stop khi có kết quả
+        this.recognition.stopOnResult = false;
 
         // Sự kiện
         this.recognition.onstart = () => {
-            console.log('🎤 Bắt đầu nghe giọng nói...');
+            console.log('🎤 Bắt đầu nghe giọng nói liên tục...');
             this.isListening = true;
             this.updateUI();
-            this.showFeedback('Đang nghe...');
+            this.showFeedback('Đang nghe... Nói lệnh bất kỳ lúc nào');
         };
 
         this.recognition.onresult = (event) => {
-            let finalTranscript = '';
-            let interimTranscript = '';
+            if (this.isProcessing) return; // Tránh xử lý chồng chéo
 
+            let finalTranscript = '';
+
+            // Chỉ xử lý kết quả FINAL
             for (let i = event.resultIndex; i < event.results.length; ++i) {
-                const transcript = event.results[i][0].transcript;
                 if (event.results[i].isFinal) {
-                    finalTranscript += transcript;
-                } else {
-                    interimTranscript += transcript;
+                    finalTranscript += event.results[i][0].transcript;
                 }
             }
 
-            // Hiển thị transcript tạm thời
-            if (interimTranscript) {
-                this.showTranscript(interimTranscript, false);
-            }
-
-            // Xử lý khi có kết quả cuối cùng
+            // Nếu có kết quả cuối cùng
             if (finalTranscript) {
-                console.log('📝 Nhận diện:', finalTranscript);
+                console.log('📝 Nhận diện FINAL:', finalTranscript);
                 this.showTranscript(finalTranscript, true);
+
+                // Xử lý command NGAY LẬP TỨC
                 this.processCommand(finalTranscript);
+
+                // Xóa transcript sau 2 giây
+                setTimeout(() => {
+                    this.showTranscript('', false);
+                }, 2000);
+            } else {
+                // Hiển thị interim transcript
+                let interimTranscript = '';
+                for (let i = event.resultIndex; i < event.results.length; ++i) {
+                    if (!event.results[i].isFinal) {
+                        interimTranscript += event.results[i][0].transcript;
+                    }
+                }
+
+                if (interimTranscript) {
+                    this.showTranscript(interimTranscript, false);
+                }
             }
         };
 
         this.recognition.onerror = (event) => {
             console.error('❌ Lỗi nhận diện:', event.error);
-            
+
             if (event.error === 'not-allowed') {
-                this.showFeedback('Vui lòng cho phép sử dụng microphone');
+                this.showFeedback('Vui lòng cho phép sử dụng microphone', 'error');
+                this.stop();
             } else if (event.error === 'no-speech') {
-                this.showFeedback('Không phát hiện giọng nói');
+                // Không nói gì - tiếp tục nghe
+                console.log('🔇 Không phát hiện giọng nói, tiếp tục nghe...');
+            } else if (event.error === 'network') {
+                this.showFeedback('Lỗi mạng, thử lại...', 'warning');
+                setTimeout(() => this.restart(), 1000);
             } else {
-                this.showFeedback('Lỗi nhận diện giọng nói');
+                console.log('⚠️ Lỗi nhỏ, tiếp tục nghe...');
+                this.restart();
             }
-            
-            this.isListening = false;
-            this.updateUI();
         };
 
         this.recognition.onend = () => {
-            console.log('🛑 Kết thúc nhận diện');
+            console.log('🔄 Kết thúc nhận diện, tự động khởi động lại...');
             this.isListening = false;
             this.updateUI();
-            
-            // Tự động khởi động lại nếu cần
+
+            // TỰ ĐỘNG KHỞI ĐỘNG LẠI (continuous mode)
             if (this.shouldAutoRestart) {
                 setTimeout(() => {
-                    if (this.shouldAutoRestart) {
+                    if (this.shouldAutoRestart && !this.isListening) {
                         this.start();
                     }
                 }, 100);
@@ -244,8 +301,26 @@ class VoiceControl {
     }
 
     processCommand(transcript) {
+        // Kiểm tra cooldown
+        const now = Date.now();
+        if (now - this.lastCommandTime < this.commandCooldown) {
+            console.log('⏳ Đang trong cooldown, bỏ qua command');
+            return;
+        }
+
+        this.lastCommandTime = now;
+        this.isProcessing = true;
+
         const normalized = this.normalizeText(transcript);
         console.log('🔍 Xử lý command:', normalized);
+
+        // Kiểm tra lệnh trợ giúp trước
+        if (normalized.includes('trợ giúp') || normalized.includes('giúp')) {
+            console.log('✅ Phát hiện lệnh trợ giúp');
+            this.showHelp();
+            this.isProcessing = false;
+            return;
+        }
 
         // Tìm command khớp nhất
         let bestMatch = null;
@@ -259,19 +334,28 @@ class VoiceControl {
             }
         }
 
-        if (bestMatch) {
-            console.log(`✅ Khớp lệnh: "${bestMatch}" (độ chính xác: ${(bestScore * 100).toFixed(0)}%)`);
-            const action = this.commands.get(bestMatch);
-            action();
+        if (bestMatch && bestMatch !== 'trợ giúp') {
+            console.log(`✅ Khớp lệnh: "${bestMatch}" (${(bestScore * 100).toFixed(0)}%)`);
+
+            // Thực hiện action NGAY
+            try {
+                const action = this.commands.get(bestMatch);
+                action();
+                this.showFeedback(`Đã thực hiện: ${bestMatch}`, 'success');
+            } catch (error) {
+                console.error('❌ Lỗi thực hiện command:', error);
+                this.showFeedback(`Lỗi: ${error.message}`, 'error');
+            }
         } else {
             console.log('❌ Không tìm thấy lệnh phù hợp');
-            this.showFeedback('Không hiểu lệnh. Nói "trợ giúp" để xem danh sách lệnh');
-            
-            // Kiểm tra nếu là lệnh trợ giúp
-            if (normalized.includes('trợ giúp') || normalized.includes('giúp đỡ')) {
-                this.showHelp();
+
+            // Hiển thị gợi ý
+            if (!normalized.includes('trợ giúp')) {
+                this.showFeedback('Không hiểu lệnh. Nói "trợ giúp" để xem danh sách lệnh', 'warning');
             }
         }
+
+        this.isProcessing = false;
     }
 
     normalizeText(text) {
@@ -288,25 +372,25 @@ class VoiceControl {
     calculateMatchScore(text, command) {
         const textWords = this.normalizeText(text).split(' ');
         const commandWords = this.normalizeText(command).split(' ');
-        
+
         let matches = 0;
-        
+
         // Đếm số từ khớp
         for (const cmdWord of commandWords) {
-            if (textWords.some(textWord => 
+            if (textWords.some(textWord =>
                 textWord.includes(cmdWord) || cmdWord.includes(textWord)
             )) {
                 matches++;
             }
         }
-        
+
         return matches / commandWords.length;
     }
 
     start() {
         if (!this.recognition) {
             if (!this.initialize()) {
-                this.showFeedback('Trình duyệt không hỗ trợ!');
+                this.showFeedback('Không thể khởi tạo voice control', 'error');
                 return;
             }
         }
@@ -314,22 +398,24 @@ class VoiceControl {
         try {
             this.shouldAutoRestart = true;
             this.recognition.start();
-            console.log('▶️ Bắt đầu nhận diện giọng nói');
+            console.log('▶️ Bắt đầu nhận diện giọng nói (Continuous Mode)');
         } catch (error) {
             console.error('❌ Lỗi khi bắt đầu:', error);
-            this.showFeedback('Không thể bắt đầu nhận diện');
-            
+
             // Thử lại sau 1 giây
             setTimeout(() => this.start(), 1000);
         }
     }
 
     stop() {
+        console.log('⏹️ Dừng voice control');
         this.shouldAutoRestart = false;
         if (this.recognition && this.isListening) {
             this.recognition.stop();
-            console.log('⏹️ Dừng nhận diện giọng nói');
         }
+        this.isListening = false;
+        this.updateUI();
+        this.showFeedback('Đã dừng voice control', 'info');
     }
 
     toggle() {
@@ -340,45 +426,57 @@ class VoiceControl {
         }
     }
 
+    restart() {
+        if (this.isListening) {
+            this.recognition.stop();
+        }
+        setTimeout(() => this.start(), 100);
+    }
+
     updateUI() {
         const statusElement = document.getElementById('voiceStatus');
         const toggleBtn = document.getElementById('toggleVoice');
-        
+
         if (statusElement) {
             statusElement.textContent = this.isListening ? '🎤 Đang nghe...' : '🎤 Sẵn sàng';
             statusElement.className = this.isListening ? 'voice-status listening' : 'voice-status';
         }
-        
+
         if (toggleBtn) {
-            toggleBtn.innerHTML = this.isListening ? 
-                '<span class="voice-icon">🛑</span> Dừng voice' : 
+            toggleBtn.innerHTML = this.isListening ?
+                '<span class="voice-icon">🛑</span> Dừng voice' :
                 '<span class="voice-icon">🎤</span> Bật voice';
             toggleBtn.className = this.isListening ? 'btn btn-danger' : 'btn btn-success';
         }
     }
 
-    showFeedback(message) {
-        // Tạo hoặc cập nhật feedback element
+    showFeedback(message, type = 'info') {
         let feedback = document.getElementById('voiceFeedback');
-        
+
         if (!feedback) {
             feedback = document.createElement('div');
             feedback.id = 'voiceFeedback';
             feedback.className = 'voice-feedback';
             document.body.appendChild(feedback);
         }
-        
+
+        const icons = {
+            'success': '✅',
+            'error': '❌',
+            'warning': '⚠️',
+            'info': '🎤'
+        };
+
+        feedback.className = `voice-feedback ${type}`;
         feedback.innerHTML = `
-            <div class="voice-feedback-content">
-                <span class="voice-icon">🎤</span>
-                <span class="voice-message">${message}</span>
-            </div>
-        `;
-        
-        // Hiển thị
+        <div class="voice-feedback-content">
+            <span class="voice-icon">${icons[type] || '🎤'}</span>
+            <span class="voice-message">${message}</span>
+        </div>
+    `;
+
         feedback.classList.add('show');
-        
-        // Tự động ẩn sau 3 giây
+
         clearTimeout(this.feedbackTimeout);
         this.feedbackTimeout = setTimeout(() => {
             feedback.classList.remove('show');
@@ -388,7 +486,7 @@ class VoiceControl {
     showTranscript(text, isFinal = false) {
         const transcriptElement = document.getElementById('voiceTranscript');
         if (!transcriptElement) return;
-        
+
         transcriptElement.textContent = text;
         transcriptElement.className = isFinal ? 'voice-transcript final' : 'voice-transcript';
     }
@@ -396,11 +494,11 @@ class VoiceControl {
     showHelp() {
         const helpModal = document.createElement('div');
         helpModal.className = 'voice-help-modal';
-        
+
         const commandsList = Array.from(this.commands.keys())
             .filter(cmd => !cmd.includes('xin ') && !cmd.includes('hãy ') && !cmd.endsWith(' đi'))
             .slice(0, 9); // Lấy 9 command chính
-        
+
         helpModal.innerHTML = `
             <div class="voice-help-content">
                 <div class="voice-help-header">
@@ -432,12 +530,12 @@ class VoiceControl {
                 </div>
             </div>
         `;
-        
+
         document.body.appendChild(helpModal);
-        
+
         // Close events
         const closeHelp = () => document.body.removeChild(helpModal);
-        
+
         helpModal.querySelector('.close-help').addEventListener('click', closeHelp);
         helpModal.querySelector('#closeHelpBtn').addEventListener('click', closeHelp);
         helpModal.addEventListener('click', (e) => {
@@ -457,7 +555,7 @@ class VoiceControl {
             'debug': 'Mở cửa sổ debug',
             'refresh': 'Làm mới giao diện'
         };
-        
+
         return descriptions[command] || 'Thực hiện lệnh';
     }
 }
