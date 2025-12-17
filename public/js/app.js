@@ -6,7 +6,7 @@ class FaceDetectionApp {
         // Khởi tạo VideoManager
         this.videoManager = new VideoManager();
         this.capturedImages = [];
-        this.currentSessionImages = new Map(); // Map sessionId -> images array
+        this.currentSessionImages = new Map();
         this.currentSessionId = null;
 
         // Load từ localStorage
@@ -14,20 +14,21 @@ class FaceDetectionApp {
 
         // KHỞI TẠO VOICE CONTROL
         this.voiceControl = null;
-        this.initializeVoiceControl();
 
-        // Đảm bảo DOM đã sẵn sàng
+        // KHÔNG gọi initialize() ở đây nữa
+        // Thay vào đó, đợi DOM sẵn sàng
         if (document.readyState === 'loading') {
             document.addEventListener('DOMContentLoaded', () => this.initialize());
         } else {
-            this.initialize();
+            // DOM đã sẵn sàng
+            setTimeout(() => this.initialize(), 100);
         }
-
     }
 
     initialize() {
         console.log('🎯 Starting app initialization...');
 
+        // Kiểm tra DOM elements
         const requiredElements = [
             'startCamera', 'stopCamera', 'startTracking', 'stopTracking',
             'faceCanvas', 'currentFaces', 'totalFaces', 'trackingTime'
@@ -43,7 +44,7 @@ class FaceDetectionApp {
 
         console.log('✅ All DOM elements found');
 
-        // Khởi tạo FaceDetector với tracking cải tiến
+        // Khởi tạo FaceDetector
         this.faceDetector = new FaceDetector();
 
         // QUAN TRỌNG: Thiết lập callbacks trực tiếp
@@ -58,11 +59,8 @@ class FaceDetectionApp {
         // Thêm event listeners cho modal xóa
         this.setupDeleteModal();
 
-        if (document.readyState === 'loading') {
-            document.addEventListener('DOMContentLoaded', () => this.initialize());
-        } else {
-            this.initialize();
-        }
+        // KHỞI TẠO VOICE CONTROL (sau khi DOM sẵn sàng)
+        this.initializeVoiceControl();
 
         console.log('✅ FaceDetectionApp initialized successfully');
     }
@@ -71,7 +69,6 @@ class FaceDetectionApp {
         try {
             this.voiceControl = new VoiceControl();
             console.log('✅ Voice Control initialized');
-            this.setupVoiceControlListeners();
         } catch (error) {
             console.warn('⚠️ Voice Control initialization failed:', error);
         }
@@ -425,12 +422,19 @@ class FaceDetectionApp {
             }
         };
 
+        if (!document.getElementById('toggleVoice')) {
+            console.warn('⚠️ Voice control buttons not found in DOM');
+        }
+
         for (const [id, handler] of Object.entries(elements)) {
             const element = document.getElementById(id);
             if (element) {
                 element.addEventListener('click', handler);
                 console.log(`✅ Event listener added for ${id}`);
-            } else {
+            } else if (id.startsWith('debug') || id === 'refreshDisplay') {
+                // Bỏ qua debug buttons nếu không có
+                continue;
+            } else if (!id.includes('Voice')) { // Không log warning cho voice buttons nếu chưa có HTML
                 console.warn(`⚠️ Element not found: ${id}`);
             }
         }
@@ -826,49 +830,49 @@ class FaceDetectionApp {
         }
     }
 
-    updateTrackingStats(trackedFaces) {
-        if (!this.isTracking) return;
+    // updateTrackingStats(trackedFaces) {
+    //     if (!this.isTracking) return;
 
-        try {
-            let currentFaceCount = 0;
+    //     try {
+    //         let currentFaceCount = 0;
 
-            // Đếm số khuôn mặt đang được track
-            if (trackedFaces && trackedFaces.length > 0) {
-                currentFaceCount = trackedFaces.filter(face =>
-                    face.confidence >= 0.5 && face.isTracked
-                ).length;
-            }
+    //         // Đếm số khuôn mặt đang được track
+    //         if (trackedFaces && trackedFaces.length > 0) {
+    //             currentFaceCount = trackedFaces.filter(face =>
+    //                 face.confidence >= 0.5 && face.isTracked
+    //             ).length;
+    //         }
 
-            // CẬP NHẬT SỐ LIỆU QUAN TRỌNG
-            if (currentFaceCount > 0) {
-                this.totalFacesCount += currentFaceCount;
+    //         // CẬP NHẬT SỐ LIỆU QUAN TRỌNG
+    //         if (currentFaceCount > 0) {
+    //             this.totalFacesCount += currentFaceCount;
 
-                console.log(`📊 UpdateTrackingStats: 
-                Current: ${currentFaceCount} faces
-                Total: ${this.totalFacesCount}
-                Tracked: ${trackedFaces.length}
-            `);
-            }
+    //             console.log(`📊 UpdateTrackingStats: 
+    //             Current: ${currentFaceCount} faces
+    //             Total: ${this.totalFacesCount}
+    //             Tracked: ${trackedFaces.length}
+    //         `);
+    //         }
 
-            // GỌI CALLBACKS ĐỂ CẬP NHẬT UI
-            if (this.onFaceCountUpdate) {
-                this.onFaceCountUpdate(currentFaceCount);
-            }
+    //         // GỌI CALLBACKS ĐỂ CẬP NHẬT UI
+    //         if (this.onFaceCountUpdate) {
+    //             this.onFaceCountUpdate(currentFaceCount);
+    //         }
 
-            if (this.onTotalFacesUpdate) {
-                this.onTotalFacesUpdate(this.totalFacesCount);
-            }
+    //         if (this.onTotalFacesUpdate) {
+    //             this.onTotalFacesUpdate(this.totalFacesCount);
+    //         }
 
-            // Cập nhật thời gian tracking
-            if (this.onTrackingTimeUpdate && this.startTime) {
-                const elapsedSeconds = Math.floor((Date.now() - this.startTime) / 1000);
-                this.onTrackingTimeUpdate(elapsedSeconds);
-            }
+    //         // Cập nhật thời gian tracking
+    //         if (this.onTrackingTimeUpdate && this.startTime) {
+    //             const elapsedSeconds = Math.floor((Date.now() - this.startTime) / 1000);
+    //             this.onTrackingTimeUpdate(elapsedSeconds);
+    //         }
 
-        } catch (error) {
-            console.error('❌ Error updating tracking stats:', error);
-        }
-    }
+    //     } catch (error) {
+    //         console.error('❌ Error updating tracking stats:', error);
+    //     }
+    // }
 
     async startTracking() {
         try {
