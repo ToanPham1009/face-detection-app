@@ -116,6 +116,18 @@
                     <span>🔴 Đang ghi nhận dữ liệu...</span>
                 </div>
 
+                <!-- Thêm vào sau phần controls trong tab live-tab -->
+                <div class="voice-control-section">
+                    <div id="voiceStatus" class="voice-status">🎤 Sẵn sàng</div>
+                    <div id="voiceTranscript" class="voice-transcript">Chờ lệnh...</div>
+                    <button id="toggleVoice" class="btn btn-success">
+                        <span class="voice-icon">🎤</span> Bật voice control
+                    </button>
+                    <button id="helpVoice" class="btn btn-info">
+                        <span class="voice-icon">❓</span> Trợ giúp
+                    </button>
+                </div>
+
                 <div class="controls">
                     <button id="startCamera" class="btn btn-primary">📷 Bật Camera</button>
                     <button id="stopCamera" class="btn btn-danger" disabled>⏹️ Tắt Camera</button>
@@ -192,7 +204,7 @@
                                     Your browser does not support the video tag.
                                 </video>
                             </div>
-                            
+
                             <div class="video-info" id="videoInfo">
                                 <div class="no-video-selected">
                                     <div class="icon">📹</div>
@@ -577,6 +589,7 @@
     <script src="js/videoManager.js"></script>
     <script src="js/faceDetection.js"></script>
     <script src="js/app.js"></script>
+    <script src="js/voiceControl.js"></script>
 
     <!-- Thêm vào head của file HTML -->
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>

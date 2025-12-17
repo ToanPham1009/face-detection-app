@@ -12,6 +12,10 @@ class FaceDetectionApp {
         // Load từ localStorage
         this.loadFromLocalStorage();
 
+        // KHỞI TẠO VOICE CONTROL
+        this.voiceControl = null;
+        this.initializeVoiceControl();
+
         // Đảm bảo DOM đã sẵn sàng
         if (document.readyState === 'loading') {
             document.addEventListener('DOMContentLoaded', () => this.initialize());
@@ -54,7 +58,43 @@ class FaceDetectionApp {
         // Thêm event listeners cho modal xóa
         this.setupDeleteModal();
 
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', () => this.initialize());
+        } else {
+            this.initialize();
+        }
+
         console.log('✅ FaceDetectionApp initialized successfully');
+    }
+
+    initializeVoiceControl() {
+        try {
+            this.voiceControl = new VoiceControl();
+            console.log('✅ Voice Control initialized');
+            this.setupVoiceControlListeners();
+        } catch (error) {
+            console.warn('⚠️ Voice Control initialization failed:', error);
+        }
+    }
+
+    showBasicHelp() {
+        const helpText = `
+        🎤 Lệnh điều khiển bằng giọng nói:
+        
+        • "Bật camera" - Khởi động camera
+        • "Tắt camera" - Dừng camera
+        • "Bắt đầu theo dõi" - Bắt đầu đếm khuôn mặt
+        • "Dừng theo dõi" - Dừng đếm khuôn mặt
+        • "Chụp hình" - Chụp ảnh từ camera
+        • "Xem lịch sử" - Xem video đã lưu
+        • "Quay lại live" - Quay về tab live
+        • "Debug" - Mở cửa sổ debug
+        • "Refresh" - Làm mới giao diện
+        
+        📝 Mẹo: Nói rõ ràng, tự nhiên. Có thể thêm "xin", "hãy", "...đi"
+    `;
+
+        alert(helpText);
     }
 
     // Thêm vào class FaceDetectionApp trong app.js
@@ -366,6 +406,22 @@ class FaceDetectionApp {
 
             'captureFromVideo': () => {
                 this.captureFromVideoPlayer();
+            },
+            // Thêm voice control listeners
+            'toggleVoice': () => {
+                if (this.voiceControl) {
+                    this.voiceControl.toggle();
+                } else {
+                    alert('Voice Control chưa được khởi tạo. Vui lòng refresh trang.');
+                }
+            },
+
+            'helpVoice': () => {
+                if (this.voiceControl) {
+                    this.voiceControl.showHelp();
+                } else {
+                    this.showBasicHelp();
+                }
             }
         };
 
@@ -379,6 +435,8 @@ class FaceDetectionApp {
             }
         }
     }
+
+
 
     // Phương thức chụp từ camera live
     async captureFromCamera() {
