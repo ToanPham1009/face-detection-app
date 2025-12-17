@@ -1012,6 +1012,7 @@ class FaceDetectionApp {
         }
     }
 
+    // Trong createVideoItem, sửa lại để hiển thị đúng thông tin
     createVideoItem(session) {
         const div = document.createElement('div');
         div.className = 'video-item';
@@ -1037,7 +1038,7 @@ class FaceDetectionApp {
                 <span class="stat-value">${duration}</span>
             </div>
             <div class="stat">
-                <span class="stat-label">TỔNG KHUÔN MẶT:</span>
+                <span class="stat-label">KHUÔN MẶT:</span>
                 <span class="stat-value">${session.total_faces || 0}</span>
             </div>
             <div class="stat">
@@ -1053,7 +1054,7 @@ class FaceDetectionApp {
                 <span class="stat-value">${new Date(session.end_time).toLocaleTimeString('vi-VN')}</span>
             </div>
         </div>
-        ${!hasVideo ? '<div style="margin-top: 8px; font-size: 12px; color: #ffc107;">📹 Không có video</div>' : ''}
+        ${!hasVideo ? '<div style="margin-top: 8px; font-size: 12px; color: #e53e3e;">📹 Không có video</div>' : ''}
     `;
 
         div.addEventListener('click', (event) => {
@@ -1085,25 +1086,15 @@ class FaceDetectionApp {
         this.deleteModal.style.display = 'block';
     }
 
-    formatDuration(seconds) {
-        if (!seconds || seconds === 0) return '0s';
-
-        const mins = Math.floor(seconds / 60);
-        const secs = seconds % 60;
-
-        if (mins === 0) {
-            return `${secs}s`;
-        } else if (secs === 0) {
-            return `${mins}m`;
-        } else {
-            return `${mins}m ${secs}s`;
-        }
-    }
-
+    // Sửa lại phương thức playVideo
     async playVideo(session, event) {
         try {
             const videoPlayer = document.getElementById('playbackVideo');
+            const videoWrapper = document.querySelector('.video-wrapper');
             const videoInfo = document.getElementById('videoInfo');
+
+            console.log('🎬 Playing video for session:', session.id);
+            console.log('Video URL:', session.video_filename);
 
             // Xóa active class từ tất cả items
             document.querySelectorAll('.video-item').forEach(item => {
@@ -1115,8 +1106,6 @@ class FaceDetectionApp {
                 event.currentTarget.classList.add('active');
             }
 
-            console.log('🎬 Playing video for session:', session.id);
-
             // Cập nhật currentSessionId
             this.currentSessionId = session.id;
 
@@ -1127,41 +1116,88 @@ class FaceDetectionApp {
             }
 
             if (session.video_filename && session.video_filename !== 'null') {
-                videoPlayer.src = session.video_filename;
+                // Hiển thị video wrapper và ẩn video info
+                videoWrapper.style.display = 'block';
+                videoWrapper.classList.add('active');
+                videoInfo.style.display = 'none';
+
+                // Kiểm tra xem video URL có hợp lệ không
+                const videoUrl = session.video_filename;
+                console.log('Setting video src to:', videoUrl);
+
+                videoPlayer.src = videoUrl;
                 videoPlayer.style.display = 'block';
 
-                // Reset và play video
-                videoPlayer.currentTime = 0;
-                videoPlayer.play().catch(e => console.log('Auto-play prevented:', e));
+                // Thêm event listener để xử lý lỗi
+                videoPlayer.onerror = (e) => {
+                    console.error('❌ Video playback error:', e);
+                    videoWrapper.style.display = 'none';
+                    videoWrapper.classList.remove('active');
+                    videoInfo.style.display = 'block';
+                    videoInfo.innerHTML = `
+                    <div class="no-video-selected">
+                        <div class="icon">❌</div>
+                        <div>
+                            <h4>Lỗi phát video</h4>
+                            <p>Không thể phát video. URL có thể không hợp lệ.</p>
+                            <p style="font-size: 12px; margin-top: 10px; color: #e53e3e;">
+                                URL: ${session.video_filename}
+                            </p>
+                        </div>
+                    </div>
+                `;
+                };
 
+                videoPlayer.onloadeddata = () => {
+                    console.log('✅ Video loaded successfully');
+                    // Cố gắng play video
+                    videoPlayer.play().catch(e => {
+                        console.log('Auto-play prevented, user can click play:', e);
+                    });
+                };
+
+                // Hiển thị thông tin video
+                videoInfo.style.display = 'block';
                 videoInfo.innerHTML = `
-                <div class="info-item">
-                    <span class="info-label">Session ID:</span>
-                    <span class="info-value">${session.id || 'N/A'}</span>
-                </div>
-                <div class="info-item">
-                    <span class="info-label">Thời gian bắt đầu:</span>
-                    <span class="info-value">${new Date(session.start_time).toLocaleString('vi-VN')}</span>
-                </div>
-                <div class="info-item">
-                    <span class="info-label">Thời gian kết thúc:</span>
-                    <span class="info-value">${new Date(session.end_time).toLocaleString('vi-VN')}</span>
-                </div>
-                <div class="info-item">
-                    <span class="info-label">Tổng khuôn mặt:</span>
-                    <span class="info-value">${session.total_faces || 0}</span>
-                </div>
-                <div class="info-item">
-                    <span class="info-label">Thời lượng:</span>
-                    <span class="info-value">${this.formatDuration(session.duration || 0)}</span>
-                </div>
-                <div class="info-item" style="border-bottom: none; margin-bottom: 0; padding-bottom: 0;">
-                    <span class="info-label">Video:</span>
-                    <span class="info-value" style="color: #28a745;">✅ Có sẵn</span>
+                <div style="width: 100%;">
+                    <div class="info-item">
+                        <span class="info-label">Session ID:</span>
+                        <span class="info-value">${session.id || 'N/A'}</span>
+                    </div>
+                    <div class="info-item">
+                        <span class="info-label">Thời gian bắt đầu:</span>
+                        <span class="info-value">${new Date(session.start_time).toLocaleString('vi-VN')}</span>
+                    </div>
+                    <div class="info-item">
+                        <span class="info-label">Thời gian kết thúc:</span>
+                        <span class="info-value">${new Date(session.end_time).toLocaleString('vi-VN')}</span>
+                    </div>
+                    <div class="info-item">
+                        <span class="info-label">Tổng khuôn mặt:</span>
+                        <span class="info-value">${session.total_faces || 0}</span>
+                    </div>
+                    <div class="info-item">
+                        <span class="info-label">Thời lượng:</span>
+                        <span class="info-value">${this.formatDuration(session.duration || 0)}</span>
+                    </div>
+                    <div class="info-item" style="border-bottom: none; margin-bottom: 0; padding-bottom: 0;">
+                        <span class="info-label">Trạng thái video:</span>
+                        <span class="info-value" style="color: #48bb78;">✅ Đang tải...</span>
+                    </div>
+                    <div style="margin-top: 15px; text-align: center;">
+                        <a href="${session.video_filename}" target="_blank" 
+                           style="color: #4299e1; text-decoration: underline; font-size: 14px;">
+                            📹 Mở video trong tab mới
+                        </a>
+                    </div>
                 </div>
             `;
+
             } else {
-                videoPlayer.style.display = 'none';
+                // Không có video
+                videoWrapper.style.display = 'none';
+                videoWrapper.classList.remove('active');
+                videoInfo.style.display = 'block';
                 videoInfo.innerHTML = `
                 <div class="no-video-selected">
                     <div class="icon">⚠️</div>
@@ -1193,6 +1229,7 @@ class FaceDetectionApp {
         } catch (error) {
             console.error('Error playing video:', error);
             const videoInfo = document.getElementById('videoInfo');
+            videoInfo.style.display = 'block';
             videoInfo.innerHTML = `
             <div class="no-video-selected">
                 <div class="icon">❌</div>
@@ -1202,6 +1239,33 @@ class FaceDetectionApp {
                 </div>
             </div>
         `;
+        }
+    }
+
+    // Thêm phương thức formatDuration nếu chưa có
+    formatDuration(seconds) {
+        if (!seconds || seconds === 0) return '0s';
+
+        const hours = Math.floor(seconds / 3600);
+        const minutes = Math.floor((seconds % 3600) / 60);
+        const secs = seconds % 60;
+
+        if (hours > 0) {
+            return `${hours}h ${minutes}m ${secs}s`;
+        } else if (minutes > 0) {
+            return `${minutes}m ${secs}s`;
+        } else {
+            return `${secs}s`;
+        }
+    }
+
+    // Thêm phương thức để kiểm tra video URL
+    async testVideoUrl(url) {
+        try {
+            const response = await fetch(url, { method: 'HEAD' });
+            return response.ok;
+        } catch (error) {
+            return false;
         }
     }
 
