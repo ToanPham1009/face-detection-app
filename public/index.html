@@ -137,6 +137,19 @@
                     <div class="voice-mode">
                         <span class="mode-badge">📣 Chế độ liên tục</span>
                     </div>
+                    <div class="voice-test-buttons">
+                        <button class="btn btn-sm btn-outline-warning"
+                            onclick="window.voiceControl?.quickTest('bật camera')">
+                            Test: Bật Camera
+                        </button>
+                        <button class="btn btn-sm btn-outline-warning"
+                            onclick="window.voiceControl?.quickTest('chụp hình')">
+                            Test: Chụp Hình
+                        </button>
+                        <button class="btn btn-sm btn-outline-info" onclick="window.voiceControl?.debugTest?.()">
+                            Debug
+                        </button>
+                    </div>
                 </div>
 
                 <div class="controls">

@@ -207,11 +207,25 @@ h1 {
     }
 
     50% {
-        opacity: 0.5;
+        opacity: 0.7;
     }
 
     100% {
         opacity: 1;
+    }
+}
+
+@keyframes quickFlash {
+    0% {
+        background-color: #48bb78;
+    }
+
+    50% {
+        background-color: #ffffff;
+    }
+
+    100% {
+        background-color: #48bb78;
     }
 }
 
@@ -1951,10 +1965,12 @@ h1 {
 }
 
 .voice-status.listening {
-    background: linear-gradient(135deg, #48bb78, #38a169);
-    color: white;
-    border-color: #48bb78;
     animation: pulse 1.5s infinite;
+    background: linear-gradient(135deg, #48bb78, #38a169);
+}
+
+.quick-response {
+    animation: quickFlash 0.3s ease-in-out;
 }
 
 @keyframes pulse {
@@ -1986,9 +2002,21 @@ h1 {
 }
 
 .voice-transcript.final {
-    background: rgba(72, 187, 120, 0.1);
-    border-color: #48bb78;
-    color: #a0e6c3;
+    background: rgba(72, 187, 120, 0.2);
+    border-left: 3px solid #48bb78;
+    transition: all 0.3s ease;
+}
+
+.voice-transcript.processing {
+    background: rgba(66, 153, 225, 0.2);
+    border-left: 3px solid #4299e1;
+}
+
+.voice-test-buttons {
+    display: flex;
+    gap: 5px;
+    flex-wrap: wrap;
+    margin-top: 10px;
 }
 
 .voice-icon {
