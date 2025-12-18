@@ -220,9 +220,11 @@ class VoiceControl {
         this.recognition.lang = 'vi-VN';
         this.recognition.maxAlternatives = 1; // Giảm xuống 1 cho nhanh
 
-        // TĂNG tốc độ nhận diện
-        this.recognition.grammars = null; // Không dùng grammar
-        this.recognition.serviceURI = ''; // Dùng service mặc định
+        // SỬA: KHÔNG đặt grammars (gây lỗi)
+        // this.recognition.grammars = null; // XÓA DÒNG NÀY
+
+        // SỬA: KHÔNG đặt serviceURI (gây lỗi)
+        // this.recognition.serviceURI = ''; // XÓA DÒNG NÀY
 
         // Sự kiện
         this.recognition.onstart = () => {
@@ -309,7 +311,7 @@ class VoiceControl {
         };
 
         // Thêm sự kiện onsoundstart nếu có
-        if (this.recognition.onsoundstart) {
+        if (typeof this.recognition.onsoundstart !== 'undefined') {
             this.recognition.onsoundstart = () => {
                 console.log('🔊 Phát hiện âm thanh');
                 this.lastSpeechDetected = Date.now();

@@ -609,6 +609,28 @@
         });
     </script>
 
+    <script>
+        // Fallback voice control nếu class không tồn tại
+        if (typeof VoiceControl === 'undefined' && typeof SimpleVoiceControl === 'undefined') {
+            console.warn('VoiceControl classes not defined, creating fallback');
+
+            window.SimpleVoiceControl = class {
+                constructor() {
+                    console.log('⚠️ Using fallback voice control');
+                    this.isListening = false;
+                }
+
+                toggle() {
+                    alert('Voice Control không khả dụng trong trình duyệt này');
+                }
+
+                showHelp() {
+                    alert('Voice Control requires Chrome/Edge with microphone permission');
+                }
+            };
+        }
+    </script>
+
     <!-- Các script hiện tại của bạn -->
     <script src="js/videoManager.js"></script>
     <script src="js/faceDetection.js"></script>
