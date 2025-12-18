@@ -243,6 +243,7 @@ h1 {
     overflow: hidden;
     min-width: 300px;
     max-width: 400px;
+    overflow: auto;
 }
 
 .video-list-header {
