@@ -8,6 +8,7 @@
     <link rel="stylesheet" href="css/style.css">
     <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs"></script>
     <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/blazeface"></script>
+    <script src="js/voiceControl.js"></script>
 </head>
 
 <body>
@@ -591,33 +592,11 @@
         });
     </script>
 
-    <script>
-        // Fallback voice control nếu class không tồn tại
-        if (typeof VoiceControl === 'undefined' && typeof SimpleVoiceControl === 'undefined') {
-            console.warn('VoiceControl classes not defined, creating fallback');
-
-            window.SimpleVoiceControl = class {
-                constructor() {
-                    console.log('⚠️ Using fallback voice control');
-                    this.isListening = false;
-                }
-
-                toggle() {
-                    alert('Voice Control không khả dụng trong trình duyệt này');
-                }
-
-                showHelp() {
-                    alert('Voice Control requires Chrome/Edge with microphone permission');
-                }
-            };
-        }
-    </script>
-
     <!-- Các script hiện tại của bạn -->
     <script src="js/videoManager.js"></script>
     <script src="js/faceDetection.js"></script>
     <script src="js/app.js"></script>
-    <script src="js/voiceControl.js"></script>
+
 
     <!-- Thêm vào head của file HTML -->
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
@@ -630,6 +609,45 @@
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/face_detection/face_detection.js"
         crossorigin="anonymous"></script>
 
+        
+    <script>
+        // Chạy sau khi tất cả scripts đã load
+        window.addEventListener('load', function () {
+            if (typeof VoiceControl === 'undefined' && typeof SimpleVoiceControl === 'undefined') {
+                console.warn('VoiceControl classes not defined, creating fallback');
+
+                window.VoiceControl = class {
+                    constructor() {
+                        console.log('⚠️ Using fallback VoiceControl');
+                        this.isListening = false;
+                    }
+
+                    start() {
+                        console.log('Fallback: start() called');
+                        this.showFeedback('Voice Control not available');
+                    }
+
+                    stop() {
+                        console.log('Fallback: stop() called');
+                    }
+
+                    toggle() {
+                        alert('Voice Control requires Chrome/Edge with HTTPS');
+                    }
+
+                    showHelp() {
+                        alert('Voice Control features:\n• Requires HTTPS\n• Requires Chrome/Edge\n• Requires microphone permission');
+                    }
+
+                    showFeedback(message) {
+                        console.log('Feedback:', message);
+                    }
+                };
+                // Cũng tạo SimpleVoiceControl
+                window.SimpleVoiceControl = window.VoiceControl;
+            }
+        });
+    </script>
 </body>
 
 </html>
