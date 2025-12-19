@@ -85,7 +85,6 @@ class FaceDetectionApp {
         • "Chụp hình" - Chụp ảnh từ camera
         • "Xem lịch sử" - Xem video đã lưu
         • "Quay lại live" - Quay về tab live
-        • "Debug" - Mở cửa sổ debug
         • "Refresh" - Làm mới giao diện
         
         📝 Mẹo: Nói rõ ràng, tự nhiên. Có thể thêm "xin", "hãy", "...đi"
@@ -353,49 +352,6 @@ class FaceDetectionApp {
             },
             'stopTracking': async () => {
                 await this.stopTracking();
-            },
-            'debugButton': () => {
-                console.log('🐛 DEBUG INFO:');
-                console.log('- FaceDetector State:', this.faceDetector.getCameraState?.() || 'N/A');
-                console.log('- Is Tracking:', this.faceDetector?.isTracking);
-                console.log('- Total Faces:', this.faceDetector?.totalFacesCount);
-
-                // Force UI update
-                const currentFaces = document.getElementById('currentFaces');
-                const totalFaces = document.getElementById('totalFaces');
-                if (currentFaces) currentFaces.textContent = this.faceDetector?.totalFacesCount || 0;
-                if (totalFaces) totalFaces.textContent = this.faceDetector?.totalFacesCount || 0;
-
-                alert(`Debug Info:\nTracking: ${this.faceDetector?.isTracking ? 'ON' : 'OFF'}\nTotal Faces: ${this.faceDetector?.totalFacesCount || 0}`);
-            },
-            'debugTracking': () => {
-                if (this.faceDetector?.faceTracker) {
-                    console.log('🔍 DEBUG FACE TRACKER:');
-                    console.log('- Total unique faces:', this.faceDetector.faceTracker.totalUniqueFaces);
-                    console.log('- Currently tracked:', this.faceDetector.faceTracker.currentFrameFaces?.size || 0);
-                    console.log('- Total appearances:', this.faceDetector.faceTracker.getTotalAppearances?.() || 0);
-                    console.log('- Tracked persons:', Array.from(this.faceDetector.faceTracker.trackedPersons?.entries() || []));
-                } else {
-                    console.log('❌ Face tracker not available');
-                }
-            },
-            'debugTracker': () => {
-                console.log('🔍 DEBUG TRACKER');
-                if (this.faceDetector?.debugTracker) {
-                    this.faceDetector.debugTracker();
-                }
-
-                // Test findMatchingFaceId với dummy data
-                if (this.faceDetector?.faceTracker?.findMatchingFaceId) {
-                    const testDetection = { x: 320, y: 240, confidence: 0.8 };
-                    const match = this.faceDetector.faceTracker.findMatchingFaceId(testDetection);
-                    console.log(`🧪 Test match result: ${match}`);
-                }
-            },
-            'refreshDisplay': () => {
-                console.log('🔄 Refreshing display...');
-                // Force redraw
-                this.faceDetector.ensureVideoDisplay?.();
             },
             'captureImage': () => {
                 this.captureFromCamera();
@@ -1001,23 +957,6 @@ class FaceDetectionApp {
             };
 
             console.log('✅ Face detector callbacks setup complete');
-        }
-    }
-
-    // Thêm vào class FaceDetectionApp
-    debugCallbacks() {
-        console.log('🔍 DEBUG CALLBACKS:');
-        console.log('- faceDetector.onFaceCountUpdate:', this.faceDetector?.onFaceCountUpdate ? 'SET' : 'NOT SET');
-        console.log('- faceDetector.onTotalFacesUpdate:', this.faceDetector?.onTotalFacesUpdate ? 'SET' : 'NOT SET');
-        console.log('- faceDetector.onTrackingTimeUpdate:', this.faceDetector?.onTrackingTimeUpdate ? 'SET' : 'NOT SET');
-
-        console.log('- faceDetector.isTracking:', this.faceDetector?.isTracking);
-        console.log('- faceDetector.totalFacesCount:', this.faceDetector?.totalFacesCount);
-
-        // Test gọi callback thủ công
-        if (this.faceDetector?.onFaceCountUpdate) {
-            console.log('🧪 Testing callback manually...');
-            this.faceDetector.onFaceCountUpdate(5);
         }
     }
 

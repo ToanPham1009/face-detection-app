@@ -194,18 +194,6 @@ class FaceDetector {
         };
     }
 
-    // Trong FaceDetector, thêm phương thức
-    debugTracker() {
-        console.log('🔍 DEBUG TRACKER STATE:');
-        console.log(`- Total unique faces: ${this.faceTracker.totalUniqueFaces}`);
-        console.log(`- Currently tracked: ${this.faceTracker.trackedPersons.size}`);
-
-        for (const [faceId, face] of this.faceTracker.trackedPersons.entries()) {
-            const age = Date.now() - face.lastSeen;
-            console.log(`  ${faceId}: (${face.x.toFixed(1)}, ${face.y.toFixed(1)}) - ${age}ms ago`);
-        }
-    }
-
     // THÊM FALLBACK TRACKER ĐƠN GIẢN
     createFallbackTracker() {
         console.log('🔄 Creating fallback tracker');
@@ -235,15 +223,6 @@ class FaceDetector {
                 trackedPersons: this.trackedPersons?.size || 0
             })
         };
-    }
-
-    // Thêm vào class FaceDetector
-    debugTracking() {
-        console.log('🔍 DEBUG TRACKING:');
-        console.log('- Total unique faces:', this.faceTracker.totalUniqueFaces);
-        console.log('- Currently tracked:', this.faceTracker.currentFrameFaces.size);
-        console.log('- All tracked persons:', Array.from(this.faceTracker.trackedPersons.entries()));
-        console.log('- Appearance counts:', Array.from(this.faceTracker.faceAppearanceCount.entries()));
     }
 
     async loadMediaPipeModel() {
