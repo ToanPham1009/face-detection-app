@@ -48,6 +48,16 @@ class FaceDetector {
         console.log('🎯 FaceDetector initialized');
 
         this.loadMediaPipeModel();
+
+        // Bind methods
+        this.destroy = this.destroy.bind(this);
+        this.cleanupMediaPipe = this.cleanupMediaPipe.bind(this);
+        this.stopCamera = this.stopCamera.bind(this);
+
+        // Add cleanup on page unload
+        window.addEventListener('beforeunload', () => {
+            this.destroy();
+        });
     }
 
     initializeFaceTracker() {
@@ -229,10 +239,11 @@ class FaceDetector {
         if (this.isModelLoading) return;
 
         this.isModelLoading = true;
+
         try {
             console.log('🔄 Loading MediaPipe Face Detection...');
 
-            // Load Face Detection
+            // QUAN TRỌNG: Create new instance
             this.faceDetection = new FaceDetection({
                 locateFile: (file) => {
                     return `https://cdn.jsdelivr.net/npm/@mediapipe/face_detection/${file}`;
@@ -246,16 +257,22 @@ class FaceDetector {
             });
 
             this.faceDetection.onResults((results) => {
-                this.lastResults = results;
-                this.handleMediaPipeResults(results);
+                if (this.isCameraOn && this.isDetectionRunning) {
+                    this.lastResults = results;
+                    this.handleMediaPipeResults(results);
+                }
             });
+
+            // Wait for the model to be ready
+            await new Promise(resolve => setTimeout(resolve, 1000));
 
             this.modelsLoaded = true;
             console.log('✅ MediaPipe Face Detection loaded successfully');
 
         } catch (error) {
             console.error('❌ Error loading MediaPipe:', error);
-            this.modelsLoaded = true;
+            this.faceDetection = null;
+            this.modelsLoaded = false;
         } finally {
             this.isModelLoading = false;
         }
@@ -1009,7 +1026,25 @@ class FaceDetector {
     }
 
     async detectWithMediaPipe() {
-        if (!this.faceDetection || !this.video || this.video.videoWidth === 0) {
+        // QUAN TRỌNG: Check if everything is ready
+        if (!this.faceDetection || !this.modelsLoaded) {
+            console.warn('⚠️ FaceDetection not ready, skipping detection');
+            return;
+        }
+
+        if (!this.video || this.video.videoWidth === 0) {
+            return;
+        }
+
+        if (!this.isCameraOn || !this.isDetectionRunning) {
+            return;
+        }
+
+        // Check if faceDetection is still valid
+        if (typeof this.faceDetection.send !== 'function') {
+            console.error('❌ faceDetection.send is not a function, reloading...');
+            this.modelsLoaded = false;
+            await this.loadMediaPipeModel();
             return;
         }
 
@@ -1017,6 +1052,20 @@ class FaceDetector {
             await this.faceDetection.send({ image: this.video });
         } catch (error) {
             console.error('❌ MediaPipe detection error:', error);
+
+            // If it's a wasm error, reload everything
+            if (error.message && error.message.includes('deleted object') ||
+                error.message && error.message.includes('SolutionWasm')) {
+                console.log('🔄 Reloading MediaPipe due to wasm error');
+
+                // Cleanup and reload
+                this.cleanupMediaPipe();
+                this.modelsLoaded = false;
+                await this.loadMediaPipeModel();
+
+                // Wait a bit before retrying
+                await new Promise(resolve => setTimeout(resolve, 500));
+            }
         }
     }
 
@@ -1024,11 +1073,39 @@ class FaceDetector {
         try {
             console.log('🎯 Starting camera...');
 
-            if (this.stream) {
-                this.stopCamera();
-                await new Promise(resolve => setTimeout(resolve, 500));
+            // QUAN TRỌNG: Cleanup trước nếu có
+            if (this.stream || this.faceDetection) {
+                await this.stopCamera();
+                // Đợi cleanup hoàn tất
+                await new Promise(resolve => setTimeout(resolve, 300));
             }
 
+            // QUAN TRỌNG: Đảm bảo đã cleanup
+            if (this.faceDetection) {
+                this.cleanupMediaPipe();
+                await new Promise(resolve => setTimeout(resolve, 200));
+            }
+
+            // Load MediaPipe models nếu chưa có
+            if (!this.faceDetection) {
+                console.log('🔄 Loading MediaPipe models...');
+                await this.loadMediaPipeModel();
+
+                // Đợi model load xong
+                let attempts = 0;
+                while (!this.modelsLoaded && attempts < 30) {
+                    await new Promise(resolve => setTimeout(resolve, 100));
+                    attempts++;
+                }
+
+                if (!this.modelsLoaded) {
+                    throw new Error('Failed to load MediaPipe models');
+                }
+
+                console.log('✅ MediaPipe models loaded');
+            }
+
+            // Get camera stream
             this.stream = await navigator.mediaDevices.getUserMedia({
                 video: {
                     width: { ideal: 640 },
@@ -1041,50 +1118,47 @@ class FaceDetector {
 
             console.log('✅ Camera stream obtained');
 
+            // Setup video element
             if (!this.video.parentNode) {
                 document.body.appendChild(this.video);
             }
 
             this.video.srcObject = this.stream;
 
+            // Wait for video to be ready
             await new Promise((resolve, reject) => {
-                let resolved = false;
-
-                this.video.onloadedmetadata = () => {
-                    if (!resolved) {
-                        resolved = true;
-                        resolve();
-                    }
+                const onLoaded = () => {
+                    this.video.removeEventListener('loadedmetadata', onLoaded);
+                    this.video.removeEventListener('error', onError);
+                    resolve();
                 };
 
-                this.video.onerror = (error) => {
-                    if (!resolved) {
-                        reject(error);
-                    }
+                const onError = (error) => {
+                    this.video.removeEventListener('loadedmetadata', onLoaded);
+                    this.video.removeEventListener('error', onError);
+                    reject(error);
                 };
 
+                this.video.addEventListener('loadedmetadata', onLoaded);
+                this.video.addEventListener('error', onError);
+
+                // Timeout fallback
                 setTimeout(() => {
-                    if (!resolved) {
-                        resolved = true;
+                    if (this.video.videoWidth > 0) {
                         resolve();
                     }
-                }, 5000);
+                }, 3000);
             });
 
+            // Initialize canvas and start detection
             this.initializeCanvas();
             await this.video.play();
-
             this.isCameraOn = true;
 
-            // Wait for models if not loaded
-            if (!this.modelsLoaded) {
-                let attempts = 0;
-                while (!this.modelsLoaded && attempts < 30) {
-                    await new Promise(resolve => setTimeout(resolve, 100));
-                    attempts++;
-                }
-            }
+            // Wait a bit for video stabilization
+            await new Promise(resolve => setTimeout(resolve, 500));
 
+            // Start detection loop
             this.startDetectionLoop();
             this.updateButtonStates();
 
@@ -1093,7 +1167,10 @@ class FaceDetector {
         } catch (error) {
             console.error('❌ Error accessing camera:', error);
             alert('Không thể truy cập camera. Vui lòng kiểm tra quyền truy cập.');
+
+            // Cleanup on error
             this.isCameraOn = false;
+            await this.cleanupMediaPipe();
             this.updateButtonStates();
         }
     }
@@ -1369,37 +1446,35 @@ class FaceDetector {
 
     stopCamera() {
         console.log('🛑 Stopping camera...');
-        this.isDetectionRunning = false;
 
-        // Dừng tracking trước nếu đang tracking
+        // Stop everything first
+        this.isDetectionRunning = false;
+        this.isCameraOn = false;
+
+        // Stop tracking if active
         if (this.isTracking) {
             this.stopTracking();
         }
 
-        if (this.faceDetection) {
-            try {
-                this.faceDetection.close();
-            } catch (error) {
-                console.log('MediaPipe cleanup:', error);
-            }
-        }
+        // QUAN TRỌNG: Cleanup MediaPipe properly
+        this.cleanupMediaPipe();
 
+        // Stop video stream
         if (this.stream) {
-            this.stream.getTracks().forEach(track => track.stop());
+            this.stream.getTracks().forEach(track => {
+                track.stop();
+                console.log(`✅ Stopped track: ${track.kind}`);
+            });
             this.stream = null;
         }
 
+        // Cleanup video element
         if (this.video) {
             this.video.pause();
             this.video.srcObject = null;
         }
 
-        // Xóa interval nếu tồn tại
-        if (this.timeInterval) {
-            clearInterval(this.timeInterval);
-            this.timeInterval = null;
-        }
-
+        // Clear canvas
         if (this.ctx) {
             this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
             this.ctx.setTransform(1, 0, 0, 1, 0, 0);
@@ -1415,9 +1490,19 @@ class FaceDetector {
             this.ctx.fillText('Nhấn "Bật Camera" để bắt đầu', this.canvas.width / 2, this.canvas.height / 2 + 10);
         }
 
-        this.isCameraOn = false;
+        // Clear intervals
+        if (this.trackingInterval) {
+            clearInterval(this.trackingInterval);
+            this.trackingInterval = null;
+        }
+
+        if (this.timeInterval) {
+            clearInterval(this.timeInterval);
+            this.timeInterval = null;
+        }
+
         this.updateButtonStates();
-        console.log('✅ Camera stopped');
+        console.log('✅ Camera stopped completely');
     }
 
     setCallbacks(callbacks) {
@@ -1493,6 +1578,90 @@ class FaceDetector {
             videoReady: this.video && this.video.readyState > 0,
             modelsLoaded: this.modelsLoaded
         };
+    }
+    // Thêm vào class FaceDetector
+    cleanupMediaPipe() {
+        console.log('🧹 Cleaning up MediaPipe resources...');
+
+        // Stop detection loop
+        this.isDetectionRunning = false;
+
+        // Properly close FaceDetection
+        if (this.faceDetection) {
+            try {
+                // Remove all event listeners
+                if (this.faceDetection.onResults) {
+                    this.faceDetection.onResults(null);
+                }
+
+                // Close the solution
+                if (typeof this.faceDetection.close === 'function') {
+                    this.faceDetection.close();
+                }
+
+                console.log('✅ FaceDetection instance closed');
+            } catch (error) {
+                console.warn('⚠️ Error closing FaceDetection:', error);
+            } finally {
+                this.faceDetection = null; // QUAN TRỌNG: Set về null
+            }
+        }
+
+        // Clear references
+        this.modelsLoaded = false;
+        this.isModelLoading = false;
+        this.lastResults = null;
+
+        console.log('✅ MediaPipe cleanup complete');
+    }
+
+    // Thêm vào cuối class FaceDetector
+    destroy() {
+        console.log('🔥 Destroying FaceDetector...');
+
+        // Stop everything
+        this.isDetectionRunning = false;
+        this.isTracking = false;
+        this.isCameraOn = false;
+
+        // Cleanup MediaPipe
+        this.cleanupMediaPipe();
+
+        // Stop camera
+        if (this.stream) {
+            this.stream.getTracks().forEach(track => track.stop());
+            this.stream = null;
+        }
+
+        // Cleanup video
+        if (this.video) {
+            this.video.pause();
+            this.video.srcObject = null;
+            if (this.video.parentNode) {
+                this.video.parentNode.removeChild(this.video);
+            }
+        }
+
+        // Clear intervals
+        if (this.timeInterval) {
+            clearInterval(this.timeInterval);
+            this.timeInterval = null;
+        }
+
+        if (this.trackingInterval) {
+            clearInterval(this.trackingInterval);
+            this.trackingInterval = null;
+        }
+
+        // Clear data structures
+        this.uniqueFaces.clear();
+        this.faceAppearanceHistory.clear();
+
+        if (this.faceTracker) {
+            this.faceTracker.resetCompletely();
+        }
+
+        console.log('✅ FaceDetector destroyed');
     }
 }
 

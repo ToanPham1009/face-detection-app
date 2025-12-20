@@ -786,137 +786,87 @@ class FaceDetectionApp {
         }
     }
 
-    // updateTrackingStats(trackedFaces) {
-    //     if (!this.isTracking) return;
-
-    //     try {
-    //         let currentFaceCount = 0;
-
-    //         // Đếm số khuôn mặt đang được track
-    //         if (trackedFaces && trackedFaces.length > 0) {
-    //             currentFaceCount = trackedFaces.filter(face =>
-    //                 face.confidence >= 0.5 && face.isTracked
-    //             ).length;
-    //         }
-
-    //         // CẬP NHẬT SỐ LIỆU QUAN TRỌNG
-    //         if (currentFaceCount > 0) {
-    //             this.totalFacesCount += currentFaceCount;
-
-    //             console.log(`📊 UpdateTrackingStats: 
-    //             Current: ${currentFaceCount} faces
-    //             Total: ${this.totalFacesCount}
-    //             Tracked: ${trackedFaces.length}
-    //         `);
-    //         }
-
-    //         // GỌI CALLBACKS ĐỂ CẬP NHẬT UI
-    //         if (this.onFaceCountUpdate) {
-    //             this.onFaceCountUpdate(currentFaceCount);
-    //         }
-
-    //         if (this.onTotalFacesUpdate) {
-    //             this.onTotalFacesUpdate(this.totalFacesCount);
-    //         }
-
-    //         // Cập nhật thời gian tracking
-    //         if (this.onTrackingTimeUpdate && this.startTime) {
-    //             const elapsedSeconds = Math.floor((Date.now() - this.startTime) / 1000);
-    //             this.onTrackingTimeUpdate(elapsedSeconds);
-    //         }
-
-    //     } catch (error) {
-    //         console.error('❌ Error updating tracking stats:', error);
-    //     }
-    // }
-
     async startTracking() {
         try {
             console.log('🎬 Starting tracking...');
 
-            // Reset UI trước khi bắt đầu
+            // Reset UI
             document.getElementById('currentFaces').textContent = '0';
             document.getElementById('totalFaces').textContent = '0';
-            document.getElementById('trackingTime').textContent = '0s';
+            document.getElementById('trackingTime').textContent = '0:00';
 
-            // Hiển thị trạng thái recording
+            // Show recording status
             const recordingStatus = document.getElementById('recordingStatus');
             if (recordingStatus) {
                 recordingStatus.style.display = 'flex';
             }
 
-            // Bắt đầu tracking trước
+            // Start face detector tracking
             this.faceDetector.startTracking();
             console.log('✅ Face detector tracking started');
 
-            // Cập nhật nút bấm
-            document.getElementById('startTracking').disabled = true;
-            document.getElementById('stopTracking').disabled = false;
-            document.getElementById('startCamera').disabled = true;
-            document.getElementById('stopCamera').disabled = true;
-
-            // Sau đó bắt đầu recording
+            // Start video recording
             if (this.faceDetector.video) {
                 await this.videoManager.startRecording(this.faceDetector.video);
                 console.log('✅ Video recording started');
-            } else {
-                console.warn('⚠️ Video element not available for recording');
             }
 
-            // Kiểm tra ngay lập tức xem callbacks có hoạt động không
-            setTimeout(() => {
-                console.log('🔍 Checking callbacks after 1 second:');
-                console.log('- onFaceCountUpdate:', typeof this.faceDetector.onFaceCountUpdate);
-                console.log('- onTotalFacesUpdate:', typeof this.faceDetector.onTotalFacesUpdate);
-                console.log('- Current tracking state:', this.faceDetector.isTracking);
-            }, 1000);
+            // Update buttons
+            this.updateTrackingButtons(true);
 
         } catch (error) {
-            console.error('❌ Error starting tracking/recording:', error);
-            alert('Lỗi khi bắt đầu ghi hình: ' + error.message);
+            console.error('❌ Error starting tracking:', error);
+            this.showNotification('❌ Lỗi khi bắt đầu thống kê', 'error');
         }
     }
 
     async stopTracking() {
         try {
-            console.log('⏸️ Stopping tracking in app...');
+            console.log('⏸️ Stopping tracking...');
 
-            // Dừng tracking trong faceDetector (vẫn giữ camera chạy)
+            // Stop face detector tracking (but keep camera)
             this.faceDetector.stopTracking();
             console.log('✅ Face detector tracking stopped');
 
-            // Dừng recording video
+            // Stop video recording
             const videoData = await this.videoManager.stopRecording();
-            console.log('✅ Video recording stopped:', videoData);
+            console.log('✅ Video recording stopped');
 
-            // Ẩn trạng thái recording
+            // Hide recording status
             const recordingStatus = document.getElementById('recordingStatus');
             if (recordingStatus) {
                 recordingStatus.style.display = 'none';
             }
 
-            // Cập nhật nút bấm
-            document.getElementById('startTracking').disabled = false;
-            document.getElementById('stopTracking').disabled = true;
-            document.getElementById('startCamera').disabled = false;
-            document.getElementById('stopCamera').disabled = false;
+            // Update buttons
+            this.updateTrackingButtons(false);
 
+            // Save session data
             if (videoData && videoData.filename) {
                 await this.saveSessionData(videoData);
-                console.log('✅ Session data saved with video');
             } else {
                 await this.saveSessionData({ filename: null });
-                console.log('⚠️ Session data saved without video');
             }
 
-            // HIỂN THỊ THÔNG BÁO
-            this.showNotification('⏸️ Đã dừng thống kê. Camera vẫn đang chạy.', 'info');
+            this.showNotification('⏸️ Đã dừng thống kê', 'info');
 
         } catch (error) {
-            console.error('❌ Error stopping tracking/recording:', error);
-            await this.saveSessionData({ filename: null });
+            console.error('❌ Error stopping tracking:', error);
             this.showNotification('❌ Lỗi khi dừng thống kê', 'error');
         }
+    }
+
+    // Thêm phương thức helper
+    updateTrackingButtons(isTracking) {
+        const startBtn = document.getElementById('startTracking');
+        const stopBtn = document.getElementById('stopTracking');
+        const startCameraBtn = document.getElementById('startCamera');
+        const stopCameraBtn = document.getElementById('stopCamera');
+
+        if (startBtn) startBtn.disabled = isTracking;
+        if (stopBtn) stopBtn.disabled = !isTracking;
+        if (startCameraBtn) startCameraBtn.disabled = isTracking;
+        if (stopCameraBtn) stopCameraBtn.disabled = isTracking;
     }
 
     setupFaceDetectorCallbacks() {
