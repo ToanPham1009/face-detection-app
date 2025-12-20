@@ -184,49 +184,44 @@
 
             <!-- Video History Tab -->
             <div class="tab-content" id="history-tab">
-                <div class="video-history">
-                    <div class="video-list">
-                        <div class="video-list-header">
-                            <h3>📋 Danh sách video đã lưu</h3>
-                        </div>
-                        <div class="video-list-content">
-                            <div id="videoList" class="video-list">
-                                <!-- Video items sẽ được load ở đây -->
+                <div class="history-tab">
+                    <div class="history-container">
+                        <div class="history-left">
+                            <h3>📁 Danh sách video đã lưu</h3>
+                            <div id="videoList" class="video-list-container">
+                                <!-- Sessions will be loaded here -->
                             </div>
                         </div>
-                    </div>
 
-                    <div class="video-player-container">
-                        <div class="video-player-header">
-                            <h3>🎬 Video Player</h3>
-                            <div class="video-controls">
-                                <button id="captureFromVideo" class="btn btn-capture" disabled>
+                        <div class="history-right">
+                            <!-- Video player and details -->
+                            <div class="video-player-section">
+                                <h3>🎬 Video Player</h3>
+                                <button id="captureFromVideo" class="btn btn-secondary">
                                     📸 Chụp từ video
                                 </button>
-                            </div>
-                        </div>
-                        <div class="video-player-content">
-                            <div class="video-wrapper">
-                                <video id="playbackVideo" controls style="display: none;">
-                                    Your browser does not support the video tag.
-                                </video>
-                            </div>
 
-                            <div class="video-info" id="videoInfo">
-                                <div class="no-video-selected">
-                                    <div class="icon">📹</div>
-                                    <div>
-                                        <h4>Chưa có video được chọn</h4>
-                                        <p>Vui lòng chọn một session từ danh sách bên trái để xem video và thông tin chi
-                                            tiết.</p>
+                                <div class="video-wrapper">
+                                    <video id="playbackVideo" controls></video>
+                                </div>
+
+                                <div id="videoInfo" class="video-info">
+                                    <div class="no-video-selected">
+                                        <div class="icon">📹</div>
+                                        <div>
+                                            <h4>Chưa có video được chọn</h4>
+                                            <p>Vui lòng chọn một session từ danh sách bên trái để xem video và thông tin
+                                                chi tiết.</p>
+                                        </div>
                                     </div>
                                 </div>
                             </div>
-                        </div>
-                        <div class="session-captured-images">
-                            <h3>📷 Hình đã chụp trong session</h3>
-                            <div id="sessionCapturedImages" class="captured-images-grid">
-                                <!-- Hình ảnh session sẽ hiển thị ở đây -->
+
+                            <div class="session-captures">
+                                <h3>📷 Hình đã chụp trong session</h3>
+                                <div id="sessionCapturedImages" class="captured-images-grid">
+                                    <!-- Session images will be loaded here -->
+                                </div>
                             </div>
                         </div>
                     </div>
@@ -609,7 +604,7 @@
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/face_detection/face_detection.js"
         crossorigin="anonymous"></script>
 
-        
+
     <script>
         // Chạy sau khi tất cả scripts đã load
         window.addEventListener('load', function () {

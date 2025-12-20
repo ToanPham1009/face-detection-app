@@ -957,9 +957,9 @@ class FaceDetectionApp {
 
             // Hiển thị loading state
             videoList.innerHTML = `
-            <div class="empty-state">
-                <div class="empty-state-icon">⏳</div>
-                <h4 class="empty-state-title">Đang tải lịch sử...</h4>
+            <div class="video-list-loading">
+                <div class="loading-spinner"></div>
+                <div class="loading-text">Đang tải danh sách session...</div>
             </div>
         `;
 
@@ -974,20 +974,46 @@ class FaceDetectionApp {
                 // Sắp xếp theo thời gian mới nhất trước
                 sessions.sort((a, b) => new Date(b.start_time) - new Date(a.start_time));
 
+                // GIỚI HẠN: Chỉ hiển thị 8 session gần nhất
+                const displaySessions = sessions.slice(0, 8);
+
                 videoList.innerHTML = '';
 
-                sessions.forEach(session => {
+                // Thêm tiêu đề
+                const listHeader = document.createElement('div');
+                listHeader.className = 'video-list-header';
+                listHeader.innerHTML = `
+                <h3>📁 Danh sách session (${sessions.length})</h3>
+                <div class="session-count">Hiển thị ${displaySessions.length} session gần nhất</div>
+            `;
+                videoList.appendChild(listHeader);
+
+                // Thêm session items
+                displaySessions.forEach(session => {
                     const videoItem = this.createVideoItem(session);
                     videoList.appendChild(videoItem);
                 });
+
+                // Nếu có nhiều hơn 8 session, thêm nút "Xem thêm"
+                if (sessions.length > 8) {
+                    const viewMoreBtn = document.createElement('button');
+                    viewMoreBtn.className = 'view-more-btn';
+                    viewMoreBtn.textContent = `📋 Xem thêm ${sessions.length - 8} session cũ hơn`;
+                    viewMoreBtn.addEventListener('click', () => {
+                        this.showAllSessions(sessions);
+                    });
+                    videoList.appendChild(viewMoreBtn);
+                }
+
             } else {
                 videoList.innerHTML = `
-                <div class="empty-state">
-                    <div class="empty-state-icon">📋</div>
-                    <h4 class="empty-state-title">Chưa có session nào</h4>
-                    <p class="empty-state-description">
-                        Bắt đầu theo dõi khuôn mặt để tạo session đầu tiên!
-                    </p>
+                <div class="empty-video-list">
+                    <div class="empty-icon">📁</div>
+                    <h3>Chưa có session nào</h3>
+                    <p>Bắt đầu theo dõi khuôn mặt để tạo session đầu tiên!</p>
+                    <button class="empty-action-btn" onclick="app.switchTab('live')">
+                        🎥 Chuyển đến Live View
+                    </button>
                 </div>
             `;
             }
@@ -995,15 +1021,53 @@ class FaceDetectionApp {
             console.error('Error loading video history:', error);
             const videoList = document.getElementById('videoList');
             videoList.innerHTML = `
-            <div class="empty-state error-state">
-                <div class="empty-state-icon">❌</div>
-                <h4 class="empty-state-title">Lỗi tải lịch sử</h4>
-                <p class="empty-state-description">
-                    Không thể tải danh sách session: ${error.message}
-                </p>
+            <div class="video-list-error">
+                <div class="error-icon">❌</div>
+                <h3>Lỗi tải danh sách</h3>
+                <p>Không thể tải danh sách session: ${error.message}</p>
+                <button class="retry-btn" onclick="app.loadVideoHistory()">
+                    🔄 Thử lại
+                </button>
             </div>
         `;
         }
+    }
+
+    // Phương thức để hiển thị tất cả session (khi nhấn "Xem thêm")
+    showAllSessions(allSessions) {
+        const videoList = document.getElementById('videoList');
+
+        videoList.innerHTML = '';
+
+        // Tiêu đề với nút quay lại
+        const header = document.createElement('div');
+        header.className = 'all-sessions-header';
+        header.innerHTML = `
+        <div class="header-top">
+            <button class="back-btn" onclick="app.loadVideoHistory()">
+                ← Quay lại
+            </button>
+            <h3>📁 Tất cả session (${allSessions.length})</h3>
+        </div>
+        <div class="session-count">Đang hiển thị tất cả session</div>
+    `;
+        videoList.appendChild(header);
+
+        // Hiển thị tất cả session
+        allSessions.forEach(session => {
+            const videoItem = this.createVideoItem(session);
+            videoList.appendChild(videoItem);
+        });
+
+        // Nút quay lại ở cuối
+        const footer = document.createElement('div');
+        footer.className = 'all-sessions-footer';
+        footer.innerHTML = `
+        <button class="back-btn bottom" onclick="app.loadVideoHistory()">
+            ↑ Quay lại danh sách rút gọn
+        </button>
+    `;
+        videoList.appendChild(footer);
     }
 
     createVideoItem(session) {
@@ -1014,54 +1078,72 @@ class FaceDetectionApp {
         const duration = this.formatDuration(session.duration || 0);
         const startDate = new Date(session.start_time);
         const endDate = new Date(session.end_time);
+        const sessionDate = startDate.toLocaleDateString('vi-VN');
+        const startTime = startDate.toLocaleTimeString('vi-VN', {
+            hour: '2-digit',
+            minute: '2-digit'
+        });
+        const endTime = endDate.toLocaleTimeString('vi-VN', {
+            hour: '2-digit',
+            minute: '2-digit'
+        });
 
         div.innerHTML = `
-        <div class="video-item-header">
-            <div class="video-title">
-                <span class="session-status ${hasVideo ? 'status-recorded' : 'status-no-video'}"></span>
-                Session ${session.id ? session.id.substring(0, 8) : 'N/A'}...
-            </div>
-            <div class="video-actions">
-                <button class="delete-btn" data-session-id="${session.id}" title="Xóa session">
-                    🗑️ Xóa
+        <div class="video-card">
+            <div class="video-card-header">
+                <div class="video-card-title">
+                    <span class="video-icon ${hasVideo ? 'has-video' : 'no-video'}">
+                        ${hasVideo ? '📹' : '📋'}
+                    </span>
+                    <span class="session-id">${session.id ? session.id.substring(0, 8) + '...' : 'N/A'}</span>
+                </div>
+                <button class="video-card-delete" data-session-id="${session.id}" title="Xóa session">
+                    🗑️
                 </button>
             </div>
-        </div>
-        <div class="video-stats">
-            <div class="stat">
-                <span class="stat-label">NGÀY:</span>
-                <span class="stat-value">${startDate.toLocaleDateString('vi-VN')}</span>
+            
+            <div class="video-card-date">
+                <span class="date-icon">📅</span>
+                <span class="date-text">${sessionDate}</span>
             </div>
-            <div class="stat">
-                <span class="stat-label">BẮT ĐẦU:</span>
-                <span class="stat-value">${startDate.toLocaleTimeString('vi-VN')}</span>
+            
+            <div class="video-card-stats">
+                <div class="stat-row">
+                    <div class="stat-item">
+                        <span class="stat-label">BẮT ĐẦU</span>
+                        <span class="stat-value">${startTime}</span>
+                    </div>
+                    <div class="stat-item">
+                        <span class="stat-label">KẾT THÚC</span>
+                        <span class="stat-value">${endTime}</span>
+                    </div>
+                </div>
+                <div class="stat-row">
+                    <div class="stat-item">
+                        <span class="stat-label">THỜI GIAN</span>
+                        <span class="stat-value">${duration}</span>
+                    </div>
+                    <div class="stat-item">
+                        <span class="stat-label">KHUÔN MẶT</span>
+                        <span class="stat-value">${session.total_faces || 0}</span>
+                    </div>
+                </div>
             </div>
-            <div class="stat">
-                <span class="stat-label">KẾT THÚC:</span>
-                <span class="stat-value">${endDate.toLocaleTimeString('vi-VN')}</span>
-            </div>
-            <div class="stat">
-                <span class="stat-label">THỜI GIAN:</span>
-                <span class="stat-value">${duration}</span>
-            </div>
-            <div class="stat">
-                <span class="stat-label">KHUÔN MẶT:</span>
-                <span class="stat-value">${session.total_faces || 0}</span>
-            </div>
-        </div>
-        ${!hasVideo ?
-                '<div class="no-video-warning">📹 Không có video</div>' :
+            
+            ${!hasVideo ?
+                '<div class="no-video-badge">Không có video</div>' :
                 ''
             }
+        </div>
     `;
 
         div.addEventListener('click', (event) => {
-            if (!event.target.closest('.delete-btn')) {
+            if (!event.target.closest('.video-card-delete')) {
                 this.playVideo(session, event);
             }
         });
 
-        const deleteBtn = div.querySelector('.delete-btn');
+        const deleteBtn = div.querySelector('.video-card-delete');
         deleteBtn.addEventListener('click', (event) => {
             event.stopPropagation();
             this.showDeleteModal(session);
