@@ -822,36 +822,37 @@ class FaceDetectionApp {
 
     async stopTracking() {
         try {
-            console.log('⏸️ Stopping tracking...');
+            console.log('⏸️ Stopping tracking in app...');
 
-            // Stop face detector tracking (but keep camera)
-            this.faceDetector.stopTracking();
-            console.log('✅ Face detector tracking stopped');
+            // Dừng tracking trong faceDetector và nhận session info
+            const sessionInfo = this.faceDetector.stopTracking();
+            console.log('✅ Face detector tracking stopped, session info:', sessionInfo);
 
-            // Stop video recording
+            // Dừng recording video
             const videoData = await this.videoManager.stopRecording();
-            console.log('✅ Video recording stopped');
+            console.log('✅ Video recording stopped:', videoData);
 
-            // Hide recording status
+            // Ẩn trạng thái recording
             const recordingStatus = document.getElementById('recordingStatus');
             if (recordingStatus) {
                 recordingStatus.style.display = 'none';
             }
 
-            // Update buttons
+            // Cập nhật nút bấm
             this.updateTrackingButtons(false);
 
-            // Save session data
-            if (videoData && videoData.filename) {
-                await this.saveSessionData(videoData);
-            } else {
-                await this.saveSessionData({ filename: null });
-            }
+            // Lưu session data với sessionInfo từ faceDetector
+            await this.saveSessionData(videoData, sessionInfo);
 
-            this.showNotification('⏸️ Đã dừng thống kê', 'info');
+            // HIỂN THỊ THÔNG BÁO
+            this.showNotification('⏸️ Đã dừng thống kê. Camera vẫn đang chạy.', 'info');
 
         } catch (error) {
-            console.error('❌ Error stopping tracking:', error);
+            console.error('❌ Error stopping tracking/recording:', error);
+
+            // Vẫn cố gắng lưu session data (có thể không có video)
+            await this.saveSessionData({ filename: null }, null);
+
             this.showNotification('❌ Lỗi khi dừng thống kê', 'error');
         }
     }
@@ -1220,18 +1221,41 @@ class FaceDetectionApp {
         }
     }
 
-    async saveSessionData(videoData) {
+    async saveSessionData(videoData, sessionInfo) {
         try {
+            // Sử dụng sessionInfo từ FaceDetector nếu có
             const sessionData = {
-                id: this.faceDetector.sessionId,
-                start_time: new Date(this.faceDetector.startTime).toISOString(),
+                id: sessionInfo?.sessionId || this.faceDetector.sessionId,
+                start_time: new Date(sessionInfo?.startTime || this.faceDetector.startTime).toISOString(),
                 end_time: new Date().toISOString(),
-                total_faces: this.faceDetector.totalFacesCount,
-                duration: Math.floor((Date.now() - this.faceDetector.startTime) / 1000),
+                total_faces: sessionInfo?.totalFaces || this.faceDetector.totalFacesCount,
+                duration: sessionInfo?.duration || Math.floor((Date.now() - this.faceDetector.startTime) / 1000),
                 video_filename: videoData?.filename || null
             };
 
             console.log('💾 Saving session data:', sessionData);
+
+            // Kiểm tra và fix dữ liệu nếu cần
+            if (!sessionData.id) {
+                console.warn('⚠️ Session ID is null, generating new ID');
+                sessionData.id = Date.now().toString();
+            }
+
+            if (!sessionData.start_time) {
+                console.warn('⚠️ Start time is null, using current time');
+                sessionData.start_time = new Date().toISOString();
+            }
+
+            if (typeof sessionData.total_faces !== 'number' || isNaN(sessionData.total_faces)) {
+                console.warn('⚠️ Total faces is invalid, setting to 0');
+                sessionData.total_faces = 0;
+            }
+
+            if (typeof sessionData.duration !== 'number' || isNaN(sessionData.duration)) {
+                console.warn('⚠️ Duration is invalid, calculating from start time');
+                sessionData.duration = sessionData.start_time ?
+                    Math.floor((Date.now() - new Date(sessionData.start_time).getTime()) / 1000) : 0;
+            }
 
             const response = await fetch('/api/sessions', {
                 method: 'POST',
@@ -1248,10 +1272,47 @@ class FaceDetectionApp {
 
             const result = await response.json();
             console.log('✅ Session saved successfully:', result);
+
+            // Reset session ID sau khi lưu thành công
+            this.faceDetector.sessionId = null;
+            this.faceDetector.startTime = null;
+
+            // Load lại lịch sử
             this.loadVideoHistory();
 
         } catch (error) {
             console.error('❌ Error saving session data:', error);
+            // Vẫn reset session ID ngay cả khi có lỗi
+            this.faceDetector.sessionId = null;
+            this.faceDetector.startTime = null;
         }
+    }
+
+    // Thêm vào app.js
+    validateSessionData(sessionData) {
+        const errors = [];
+
+        if (!sessionData.id) {
+            errors.push('Session ID is required');
+        }
+
+        if (!sessionData.start_time) {
+            errors.push('Start time is required');
+        }
+
+        if (typeof sessionData.total_faces !== 'number') {
+            errors.push('Total faces must be a number');
+        }
+
+        if (typeof sessionData.duration !== 'number') {
+            errors.push('Duration must be a number');
+        }
+
+        if (errors.length > 0) {
+            console.warn('⚠️ Session data validation errors:', errors);
+            return false;
+        }
+
+        return true;
     }
 }

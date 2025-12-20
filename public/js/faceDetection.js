@@ -1369,15 +1369,17 @@ class FaceDetector {
 
         console.log('⏸️ Stopping face tracking (keeping camera active)...');
 
+        // LƯU sessionId TRƯỚC KHI RESET
+        const sessionIdToSave = this.sessionId;
+        const startTimeToSave = this.startTime;
+        const totalFacesToSave = this.totalFacesCount;
+
         // CHỈ dừng tracking flag
         this.isTracking = false;
 
-        // Reset các biến tracking nhưng giữ camera
-        this.sessionId = null;
-        this.startTime = null;
-
-        // QUAN TRỌNG: KHÔNG reset totalFacesCount nếu muốn giữ lại kết quả
-        // this.totalFacesCount = 0; // BỎ DÒNG NÀY
+        // QUAN TRỌNG: KHÔNG reset sessionId và startTime ngay lập tức
+        // this.sessionId = null; // BỎ DÒNG NÀY
+        // this.startTime = null; // BỎ DÒNG NÀY
 
         // QUAN TRỌNG: KHÔNG xóa các faces đang tracked, chỉ đánh dấu không track nữa
         if (this.faceTracker && this.faceTracker.trackedPersons) {
@@ -1385,17 +1387,7 @@ class FaceDetector {
             for (const face of this.faceTracker.trackedPersons.values()) {
                 face.isTracked = false;
             }
-            // KHÔNG gọi resetCompletely() vì sẽ xóa hết dữ liệu
         }
-
-        // KHÔNG dừng detection loop
-        // this.isDetectionRunning = false; // BỎ DÒNG NÀY
-
-        // KHÔNG dừng intervals vì camera vẫn chạy
-        // if (this.timeInterval) {
-        //     clearInterval(this.timeInterval);
-        //     this.timeInterval = null;
-        // }
 
         // UI updates - chỉ tắt tracking indicator
         const recordingStatus = document.getElementById('recordingStatus');
@@ -1422,6 +1414,14 @@ class FaceDetector {
         this.updateButtonStates();
 
         console.log(`📊 Tracking stopped. Total faces detected: ${this.totalFacesCount}`);
+
+        // TRẢ VỀ DỮ LIỆU SESSION ĐỂ LƯU
+        return {
+            sessionId: sessionIdToSave,
+            startTime: startTimeToSave,
+            totalFaces: totalFacesToSave,
+            duration: startTimeToSave ? Math.floor((Date.now() - startTimeToSave) / 1000) : 0
+        };
     }
 
 
@@ -1575,6 +1575,13 @@ class FaceDetector {
                 console.log(`👁️ ${currentFaceCount} face(s) being tracked (no new faces)`);
             }
 
+            // ĐẢM BẢO sessionId ĐÃ ĐƯỢC TẠO
+            if (!this.sessionId) {
+                console.warn('⚠️ No sessionId found, creating new one');
+                this.sessionId = Date.now().toString();
+                this.startTime = Date.now();
+            }
+
             // Cập nhật UI
             if (this.onFaceCountUpdate) {
                 console.log(`📞 Calling onFaceCountUpdate with: ${currentFaceCount}`);
@@ -1596,7 +1603,6 @@ class FaceDetector {
             console.error('❌ Error updating tracking stats:', error);
         }
     }
-
 
     // Thêm vào class FaceDetector
     getCameraState() {
