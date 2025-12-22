@@ -1195,6 +1195,9 @@ class FaceDetectionApp {
             }
 
             if (session.video_filename && session.video_filename !== 'null') {
+                // QUAN TRỌNG: Xóa tất cả event listeners cũ trước khi thêm mới
+                this.removeVideoEventListeners(videoPlayer);
+
                 // Hiển thị video wrapper và player
                 videoWrapper.classList.add('active');
                 videoPlayer.style.display = 'block';
@@ -1203,17 +1206,21 @@ class FaceDetectionApp {
                 const videoUrl = session.video_filename;
                 console.log('Setting video src to:', videoUrl);
 
-                // Reset video player
+                // Reset video player trước
                 videoPlayer.src = '';
-                setTimeout(() => {
-                    videoPlayer.src = videoUrl;
-                    videoPlayer.load();
-                }, 100);
+                videoPlayer.load();
+
+                // Cho một khoảng thời gian ngắn để reset
+                await new Promise(resolve => setTimeout(resolve, 100));
+
+                // Set source mới
+                videoPlayer.src = videoUrl;
+                videoPlayer.load(); // Load lại video
 
                 // Hiển thị thông tin chi tiết
                 videoInfo.innerHTML = this.createVideoInfoHTML(session, videoUrl);
 
-                // Setup event listeners
+                // Setup event listeners MỚI
                 this.setupVideoPlayerEvents(videoPlayer, session);
 
             } else {
@@ -1233,96 +1240,153 @@ class FaceDetectionApp {
         }
     }
 
-    // Sửa lại phương thức để hiển thị đầy đủ thông tin
-    createVideoInfoHTML(session, videoUrl) {
-        const startDate = new Date(session.start_time);
-        const endDate = new Date(session.end_time);
-        const duration = this.formatDuration(session.duration || 0);
+    // Thêm phương thức để xóa event listeners cũ
+    removeVideoEventListeners(videoPlayer) {
+        if (!videoPlayer) return;
 
-        // Format dates nicely
-        const formattedStart = startDate.toLocaleString('vi-VN', {
-            day: '2-digit',
-            month: '2-digit',
-            year: 'numeric',
-            hour: '2-digit',
-            minute: '2-digit',
-            second: '2-digit'
-        });
+        // Clone video element để xóa tất cả event listeners
+        const newVideo = videoPlayer.cloneNode(true);
+        if (videoPlayer.parentNode) {
+            videoPlayer.parentNode.replaceChild(newVideo, videoPlayer);
+        }
 
-        const formattedEnd = endDate.toLocaleString('vi-VN', {
-            day: '2-digit',
-            month: '2-digit',
-            year: 'numeric',
-            hour: '2-digit',
-            minute: '2-digit',
-            second: '2-digit'
-        });
+        // Update reference
+        const newVideoElement = document.getElementById('playbackVideo');
 
-        return `
-        <div class="video-details-container">
-            <div class="details-header">
-                <h4>📋 Chi tiết session</h4>
-                <div class="session-id-small">ID: ${session.id ? session.id.substring(0, 12) + '...' : 'N/A'}</div>
-            </div>
-            
-            <div class="details-grid">
-                <div class="detail-card">
-                    <div class="detail-icon">⏰</div>
-                    <div class="detail-content">
-                        <div class="detail-label">BẮT ĐẦU</div>
-                        <div class="detail-value">${formattedStart}</div>
-                    </div>
-                </div>
-                
-                <div class="detail-card">
-                    <div class="detail-icon">🏁</div>
-                    <div class="detail-content">
-                        <div class="detail-label">KẾT THÚC</div>
-                        <div class="detail-value">${formattedEnd}</div>
-                    </div>
-                </div>
-                
-                <div class="detail-card">
-                    <div class="detail-icon">⏱️</div>
-                    <div class="detail-content">
-                        <div class="detail-label">THỜI LƯỢNG</div>
-                        <div class="detail-value">${duration}</div>
-                    </div>
-                </div>
-                
-                <div class="detail-card">
-                    <div class="detail-icon">👤</div>
-                    <div class="detail-content">
-                        <div class="detail-label">TỔNG KHUÔN MẶT</div>
-                        <div class="detail-value">${session.total_faces || 0}</div>
-                    </div>
-                </div>
-            </div>
-            
-            <div class="video-status-section">
-                <div class="status-header">
-                    <span class="status-label">Trạng thái video:</span>
-                    <span class="status-badge loading" id="videoStatusBadge">
-                        <span class="spinner"></span>
-                        Đang tải...
-                    </span>
-                </div>
-                
-                <div class="video-actions">
-                    <a href="${videoUrl}" target="_blank" class="video-action-btn">
-                        <span class="action-icon">📹</span>
-                        Mở video trong tab mới
-                    </a>
-                    <button class="video-action-btn secondary" onclick="app.refreshVideoPlayer()">
-                        <span class="action-icon">🔄</span>
-                        Tải lại video
-                    </button>
-                </div>
-            </div>
-        </div>
-    `;
+        // Set lại các thuộc tính quan trọng
+        if (newVideoElement) {
+            newVideoElement.controls = true;
+            newVideoElement.style.display = 'block';
+        }
+
+        return newVideoElement;
     }
 
+    createVideoInfoHTML(session, videoUrl) {
+        try {
+            const startDate = new Date(session.start_time);
+            const endDate = new Date(session.end_time);
+            const duration = this.formatDuration(session.duration || 0);
+
+            // Format dates với try-catch
+            let formattedStart = 'N/A';
+            let formattedEnd = 'N/A';
+
+            try {
+                formattedStart = startDate.toLocaleString('vi-VN', {
+                    day: '2-digit',
+                    month: '2-digit',
+                    year: 'numeric',
+                    hour: '2-digit',
+                    minute: '2-digit',
+                    second: '2-digit'
+                });
+
+                formattedEnd = endDate.toLocaleString('vi-VN', {
+                    day: '2-digit',
+                    month: '2-digit',
+                    year: 'numeric',
+                    hour: '2-digit',
+                    minute: '2-digit',
+                    second: '2-digit'
+                });
+            } catch (dateError) {
+                console.warn('⚠️ Date formatting error:', dateError);
+                formattedStart = startDate.toISOString();
+                formattedEnd = endDate.toISOString();
+            }
+
+            // Kiểm tra URL video
+            let displayUrl = 'N/A';
+            if (videoUrl && videoUrl !== 'null') {
+                displayUrl = videoUrl.length > 50 ? videoUrl.substring(0, 50) + '...' : videoUrl;
+            }
+
+            return `
+            <div class="video-details-container">
+                <div class="details-header">
+                    <h4>📋 Chi tiết session</h4>
+                    <div class="session-id-small">ID: ${session.id ? session.id.substring(0, 12) + '...' : 'N/A'}</div>
+                </div>
+                
+                <div class="details-grid">
+                    <div class="detail-card">
+                        <div class="detail-icon">⏰</div>
+                        <div class="detail-content">
+                            <div class="detail-label">BẮT ĐẦU</div>
+                            <div class="detail-value">${formattedStart}</div>
+                        </div>
+                    </div>
+                    
+                    <div class="detail-card">
+                        <div class="detail-icon">🏁</div>
+                        <div class="detail-content">
+                            <div class="detail-label">KẾT THÚC</div>
+                            <div class="detail-value">${formattedEnd}</div>
+                        </div>
+                    </div>
+                    
+                    <div class="detail-card">
+                        <div class="detail-icon">⏱️</div>
+                        <div class="detail-content">
+                            <div class="detail-label">THỜI LƯỢNG</div>
+                            <div class="detail-value">${duration}</div>
+                        </div>
+                    </div>
+                    
+                    <div class="detail-card">
+                        <div class="detail-icon">👤</div>
+                        <div class="detail-content">
+                            <div class="detail-label">TỔNG KHUÔN MẶT</div>
+                            <div class="detail-value">${session.total_faces || 0}</div>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="video-status-section">
+                    <div class="status-header">
+                        <span class="status-label">Trạng thái video:</span>
+                        <span class="status-badge loading" id="videoStatusBadge">
+                            <span class="spinner"></span>
+                            Đang tải...
+                        </span>
+                    </div>
+                    
+                    <div class="video-source-info">
+                        <div class="source-label">Đường dẫn:</div>
+                        <div class="source-value" title="${videoUrl || 'Không có'}">
+                            ${displayUrl}
+                        </div>
+                    </div>
+                    
+                    <div class="video-actions">
+                        ${videoUrl && videoUrl !== 'null' ? `
+                            <a href="${videoUrl}" target="_blank" class="video-action-btn">
+                                <span class="action-icon">📹</span>
+                                Mở video trong tab mới
+                            </a>
+                        ` : ''}
+                        <button class="video-action-btn secondary" onclick="app.refreshVideoPlayer()">
+                            <span class="action-icon">🔄</span>
+                            Tải lại video
+                        </button>
+                    </div>
+                </div>
+            </div>
+        `;
+        } catch (error) {
+            console.error('❌ Error creating video info HTML:', error);
+            return `
+            <div class="video-details-container">
+                <div class="error-state">
+                    <div class="error-icon">❌</div>
+                    <h4>Lỗi hiển thị thông tin</h4>
+                    <p>Không thể hiển thị thông tin chi tiết của session.</p>
+                </div>
+            </div>
+        `;
+        }
+    }
     // Thêm phương thức refreshVideoPlayer
     refreshVideoPlayer() {
         const videoPlayer = document.getElementById('playbackVideo');
@@ -1383,73 +1447,147 @@ class FaceDetectionApp {
     }
 
     setupVideoPlayerEvents(videoPlayer, session) {
-        const videoInfo = document.getElementById('videoInfo');
-        let statusBadge = videoInfo.querySelector('#videoStatusBadge');
+        if (!videoPlayer) return;
 
-        if (!statusBadge) {
-            // Tạo status badge nếu chưa có
-            const statusHeader = videoInfo.querySelector('.status-header');
-            if (statusHeader) {
-                statusBadge = statusHeader.querySelector('.status-badge');
-            }
+        const videoInfo = document.getElementById('videoInfo');
+
+        // Tạo một wrapper function để bắt lỗi
+        const safeHandler = (handler) => {
+            return (event) => {
+                try {
+                    handler(event);
+                } catch (error) {
+                    console.warn('⚠️ Video event handler error:', error);
+                }
+            };
+        };
+
+        // Store handlers để có thể remove sau
+        this.videoEventHandlers = this.videoEventHandlers || {};
+
+        // Cleanup old handlers first
+        if (this.videoEventHandlers[session.id]) {
+            const handlers = this.videoEventHandlers[session.id];
+            Object.keys(handlers).forEach(eventType => {
+                videoPlayer.removeEventListener(eventType, handlers[eventType]);
+            });
         }
 
-        const updateStatus = (status, className, icon = null) => {
-            if (statusBadge) {
-                statusBadge.textContent = status;
-                statusBadge.className = 'status-badge ' + className;
+        this.videoEventHandlers[session.id] = {};
 
-                if (icon) {
-                    statusBadge.innerHTML = `<span>${icon}</span> ${status}`;
+        // Helper function để update status
+        const updateStatus = (status, className, icon = null) => {
+            try {
+                const statusBadge = videoInfo.querySelector('#videoStatusBadge');
+                if (statusBadge) {
+                    statusBadge.textContent = status;
+                    statusBadge.className = 'status-badge ' + className;
+
+                    if (icon) {
+                        statusBadge.innerHTML = `<span>${icon}</span> ${status}`;
+                    }
                 }
+            } catch (error) {
+                console.warn('⚠️ Error updating status:', error);
             }
         };
 
-        videoPlayer.onloadeddata = () => {
+        // Define handlers
+        const onLoadedData = safeHandler(() => {
             console.log('✅ Video loaded successfully');
             updateStatus('✅ Đã tải xong', 'ready', '✅');
 
-            // Cố gắng play video
+            // Try to play
             videoPlayer.play().catch(e => {
                 console.log('Auto-play prevented:', e);
                 updateStatus('⏸️ Nhấn để phát', 'ready', '⏸️');
             });
-        };
+        });
 
-        videoPlayer.onplay = () => {
+        const onPlay = safeHandler(() => {
             updateStatus('▶️ Đang phát', 'playing', '▶️');
-        };
+        });
 
-        videoPlayer.onpause = () => {
+        const onPause = safeHandler(() => {
             updateStatus('⏸️ Đang dừng', 'ready', '⏸️');
-        };
+        });
 
-        videoPlayer.onwaiting = () => {
+        const onWaiting = safeHandler(() => {
             updateStatus('⏳ Đang tải...', 'loading', '<span class="spinner"></span>');
-        };
+        });
 
-        videoPlayer.onerror = (e) => {
+        const onError = safeHandler((e) => {
             console.error('❌ Video playback error:', e);
-            updateStatus('❌ Lỗi tải video', 'error', '❌');
+            console.error('Video error details:', videoPlayer.error);
 
-            // Hiển thị thông báo lỗi chi tiết
-            const errorDetails = document.createElement('div');
-            errorDetails.className = 'error-details';
-            errorDetails.innerHTML = `
-            <p style="color: #dc3545; font-size: 12px; margin-top: 8px;">
-                Lỗi: ${videoPlayer.error ? videoPlayer.error.message : 'Không thể phát video'}
-            </p>
+            updateStatus('❌ Lỗi phát video', 'error', '❌');
+
+            // Show error details
+            let errorMessage = 'Không thể phát video';
+            if (videoPlayer.error) {
+                switch (videoPlayer.error.code) {
+                    case MediaError.MEDIA_ERR_ABORTED:
+                        errorMessage = 'Video playback was aborted';
+                        break;
+                    case MediaError.MEDIA_ERR_NETWORK:
+                        errorMessage = 'Network error - video may be unavailable';
+                        break;
+                    case MediaError.MEDIA_ERR_DECODE:
+                        errorMessage = 'Video format not supported';
+                        break;
+                    case MediaError.MEDIA_ERR_SRC_NOT_SUPPORTED:
+                        errorMessage = 'Video format or source not supported';
+                        break;
+                    default:
+                        errorMessage = 'Unknown video error';
+                }
+            }
+
+            // Add error details to UI
+            const errorDiv = document.createElement('div');
+            errorDiv.className = 'video-error-details';
+            errorDiv.innerHTML = `
+            <div style="margin-top: 10px; padding: 10px; background: #f8d7da; border-radius: 5px;">
+                <p style="color: #721c24; margin: 0; font-size: 12px;">
+                    ${errorMessage}
+                </p>
+                ${session.video_filename ?
+                    `<p style="color: #721c24; margin: 5px 0 0 0; font-size: 11px;">
+                        URL: ${session.video_filename.substring(0, 50)}...
+                    </p>` : ''
+                }
+            </div>
         `;
 
-            const statusHeader = videoInfo.querySelector('.status-header');
-            if (statusHeader && !videoInfo.querySelector('.error-details')) {
-                statusHeader.parentNode.insertBefore(errorDetails, statusHeader.nextSibling);
+            const existingError = videoInfo.querySelector('.video-error-details');
+            if (existingError) {
+                existingError.remove();
             }
+
+            videoInfo.appendChild(errorDiv);
+        });
+
+        const onEnded = safeHandler(() => {
+            updateStatus('🏁 Đã kết thúc', 'ready', '🏁');
+        });
+
+        // Store handlers
+        this.videoEventHandlers[session.id] = {
+            loadeddata: onLoadedData,
+            play: onPlay,
+            pause: onPause,
+            waiting: onWaiting,
+            error: onError,
+            ended: onEnded
         };
 
-        videoPlayer.onended = () => {
-            updateStatus('🏁 Đã kết thúc', 'ready', '🏁');
-        };
+        // Add event listeners
+        videoPlayer.addEventListener('loadeddata', onLoadedData);
+        videoPlayer.addEventListener('play', onPlay);
+        videoPlayer.addEventListener('pause', onPause);
+        videoPlayer.addEventListener('waiting', onWaiting);
+        videoPlayer.addEventListener('error', onError);
+        videoPlayer.addEventListener('ended', onEnded);
     }
 
     // Thêm phương thức formatDuration nếu chưa có

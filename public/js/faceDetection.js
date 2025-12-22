@@ -1604,6 +1604,52 @@ class FaceDetector {
         }
     }
 
+    // Thêm vào class FaceDetectionApp
+    cleanupVideoPlayer() {
+        const videoPlayer = document.getElementById('playbackVideo');
+        if (!videoPlayer) return;
+
+        // Stop the video
+        videoPlayer.pause();
+        videoPlayer.currentTime = 0;
+
+        // Remove all event listeners bằng cách clone element
+        const newVideo = videoPlayer.cloneNode(true);
+        videoPlayer.parentNode.replaceChild(newVideo, videoPlayer);
+
+        // Clear video source
+        newVideo.src = '';
+        newVideo.load();
+
+        // Reset UI
+        const videoWrapper = document.querySelector('.video-wrapper');
+        if (videoWrapper) {
+            videoWrapper.classList.remove('active');
+        }
+
+        console.log('✅ Video player cleaned up');
+    }
+
+    // Call cleanup khi switching tabs hoặc trước khi load video mới
+    async playVideo(session, event) {
+        try {
+            console.log('🎬 Playing video for session:', session);
+
+            // Cleanup trước khi load video mới
+            this.cleanupVideoPlayer();
+
+            const videoPlayer = document.getElementById('playbackVideo');
+            const videoWrapper = document.querySelector('.video-wrapper');
+            const videoInfo = document.getElementById('videoInfo');
+
+            // ... phần còn lại của method ...
+
+        } catch (error) {
+            console.error('Error playing video:', error);
+            // ... xử lý lỗi ...
+        }
+    }
+
     // Thêm vào class FaceDetector
     getCameraState() {
         return {
