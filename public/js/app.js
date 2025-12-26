@@ -1170,24 +1170,9 @@ class FaceDetectionApp {
         try {
             console.log('🎬 Playing video for session:', session);
 
-            // DEBUG: Kiểm tra tất cả video elements
-            console.log('=== VIDEO ELEMENTS DEBUG ===');
-            console.log('playbackVideo:', document.getElementById('playbackVideo'));
-            console.log('sessionVideo:', document.getElementById('sessionVideo'));
-
             const videoPlayer = document.getElementById('playbackVideo');
             const videoWrapper = document.querySelector('.video-wrapper');
             const videoInfo = document.getElementById('videoInfo');
-
-            if (!videoPlayer) {
-                console.error('❌ Video player element not found!');
-                console.log('Available video elements:', document.querySelectorAll('video'));
-                return;
-            }
-
-            console.log('Video player found:', videoPlayer);
-            console.log('Video player style:', window.getComputedStyle(videoPlayer).display);
-            console.log('Video wrapper:', videoWrapper);
 
             // Xóa active class từ tất cả items
             document.querySelectorAll('.video-item').forEach(item => {
@@ -1247,11 +1232,6 @@ class FaceDetectionApp {
 
             // Load hình ảnh của session này
             await this.loadCapturesForSession(session.id);
-
-            // Thêm vào playVideo() sau khi tạo/lấy videoPlayer
-            console.log('Video in DOM?', document.body.contains(videoPlayer));
-            console.log('Video parent:', videoPlayer.parentElement);
-            console.log('Video parent display:', window.getComputedStyle(videoPlayer.parentElement).display);
 
         } catch (error) {
             console.error('Error playing video:', error);
