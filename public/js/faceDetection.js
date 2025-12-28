@@ -1606,28 +1606,38 @@ class FaceDetector {
 
     // Thêm vào class FaceDetectionApp
     cleanupVideoPlayer() {
+        console.log('🧹 Cleaning up video player...');
+
         const videoPlayer = document.getElementById('playbackVideo');
-        if (!videoPlayer) return;
+        if (videoPlayer) {
+            try {
+                // Dừng video
+                videoPlayer.pause();
+                videoPlayer.currentTime = 0;
 
-        // Stop the video
-        videoPlayer.pause();
-        videoPlayer.currentTime = 0;
+                // Xóa source và event listeners
+                videoPlayer.src = '';
+                videoPlayer.load();
 
-        // Remove all event listeners bằng cách clone element
-        const newVideo = videoPlayer.cloneNode(true);
-        videoPlayer.parentNode.replaceChild(newVideo, videoPlayer);
+                // Clone để xóa event listeners cũ
+                const newVideo = videoPlayer.cloneNode(true);
+                if (videoPlayer.parentNode) {
+                    videoPlayer.parentNode.replaceChild(newVideo, videoPlayer);
+                    newVideo.id = 'playbackVideo';
+                    newVideo.controls = true;
+                    newVideo.style.display = 'block';
+                }
 
-        // Clear video source
-        newVideo.src = '';
-        newVideo.load();
-
-        // Reset UI
-        const videoWrapper = document.querySelector('.video-wrapper');
-        if (videoWrapper) {
-            videoWrapper.classList.remove('active');
+                console.log('✅ Video player cleaned up');
+            } catch (error) {
+                console.warn('⚠️ Error during cleanup:', error);
+            }
         }
 
-        console.log('✅ Video player cleaned up');
+        // Xóa video event handlers nếu có
+        if (this.videoEventHandlers) {
+            this.videoEventHandlers = {};
+        }
     }
 
     async playVideo(session, event) {
@@ -1740,6 +1750,180 @@ class FaceDetector {
         } catch (error) {
             console.error('❌ Error in playVideo:', error);
             this.showVideoError(error, session);
+        }
+    }
+
+    setupVideoEventListeners(videoPlayer, session, videoInfo) {
+        if (!videoPlayer || !videoInfo) return;
+
+        console.log('🎧 Setting up video event listeners...');
+
+        // Xử lý khi video bắt đầu load
+        videoPlayer.onloadstart = () => {
+            console.log('📥 Video loading started');
+            this.updateVideoStatus('Đang tải video...', 'loading', videoInfo);
+        };
+
+        // Xử lý khi có đủ dữ liệu để phát
+        videoPlayer.onloadeddata = () => {
+            console.log('✅ Video data loaded');
+            this.updateVideoStatus('Đã tải xong', 'loaded', videoInfo);
+
+            // Cập nhật thông tin chi tiết
+            videoInfo.innerHTML = this.createVideoInfoHTML(session, videoPlayer.src);
+        };
+
+        // Xử lý khi video bắt đầu phát
+        videoPlayer.onplaying = () => {
+            console.log('▶️ Video is now playing');
+            this.updateVideoStatus('Đang phát', 'playing', videoInfo);
+        };
+
+        // Xử lý khi video dừng
+        videoPlayer.onpause = () => {
+            console.log('⏸️ Video paused');
+            this.updateVideoStatus('Đang dừng', 'paused', videoInfo);
+        };
+
+        // Xử lý lỗi
+        videoPlayer.onerror = (e) => {
+            console.error('❌ Video error:', videoPlayer.error);
+
+            let errorMessage = 'Không thể phát video';
+            if (videoPlayer.error) {
+                switch (videoPlayer.error.code) {
+                    case 1: errorMessage = 'Video bị hủy'; break;
+                    case 2: errorMessage = 'Lỗi mạng khi tải video'; break;
+                    case 3: errorMessage = 'Lỗi giải mã video'; break;
+                    case 4: errorMessage = 'Định dạng video không được hỗ trợ'; break;
+                }
+            }
+
+            this.updateVideoStatus('Lỗi: ' + errorMessage, 'error', videoInfo);
+            this.showVideoError(new Error(errorMessage), session);
+        };
+
+        // Xử lý khi video kết thúc
+        videoPlayer.onended = () => {
+            console.log('🏁 Video ended');
+            this.updateVideoStatus('Đã kết thúc', 'ended', videoInfo);
+        };
+    }
+
+    updateVideoStatus(message, status, videoInfo) {
+        if (!videoInfo) return;
+
+        const statusElement = videoInfo.querySelector('#videoStatusBadge') ||
+            videoInfo.querySelector('.video-status');
+
+        if (statusElement) {
+            statusElement.textContent = message;
+            statusElement.className = `status-badge ${status}`;
+
+            // Thêm icon tương ứng
+            let icon = '';
+            switch (status) {
+                case 'loading': icon = '⏳'; break;
+                case 'loaded': icon = '✅'; break;
+                case 'playing': icon = '▶️'; break;
+                case 'paused': icon = '⏸️'; break;
+                case 'error': icon = '❌'; break;
+                case 'ended': icon = '🏁'; break;
+            }
+
+            if (icon) {
+                statusElement.innerHTML = `<span>${icon}</span> ${message}`;
+            }
+        }
+    }
+
+    createVideoInfoHTML(session, videoUrl) {
+        try {
+            const startDate = new Date(session.start_time);
+            const endDate = new Date(session.end_time);
+            const duration = this.formatDuration(session.duration || 0);
+
+            return `
+            <div class="video-details-container">
+                <div class="details-header">
+                    <h4>📋 Chi tiết session</h4>
+                    <div class="session-id-small">ID: ${session.id ? session.id.substring(0, 12) + '...' : 'N/A'}</div>
+                </div>
+                
+                <div class="details-grid">
+                    <div class="detail-card">
+                        <div class="detail-icon">⏰</div>
+                        <div class="detail-content">
+                            <div class="detail-label">BẮT ĐẦU</div>
+                            <div class="detail-value">${startDate.toLocaleString('vi-VN')}</div>
+                        </div>
+                    </div>
+                    
+                    <div class="detail-card">
+                        <div class="detail-icon">🏁</div>
+                        <div class="detail-content">
+                            <div class="detail-label">KẾT THÚC</div>
+                            <div class="detail-value">${endDate.toLocaleString('vi-VN')}</div>
+                        </div>
+                    </div>
+                    
+                    <div class="detail-card">
+                        <div class="detail-icon">⏱️</div>
+                        <div class="detail-content">
+                            <div class="detail-label">THỜI LƯỢNG</div>
+                            <div class="detail-value">${duration}</div>
+                        </div>
+                    </div>
+                    
+                    <div class="detail-card">
+                        <div class="detail-icon">👤</div>
+                        <div class="detail-content">
+                            <div class="detail-label">TỔNG KHUÔN MẶT</div>
+                            <div class="detail-value">${session.total_faces || 0}</div>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="video-status-section">
+                    <div class="status-header">
+                        <span class="status-label">Trạng thái:</span>
+                        <span class="status-badge loading" id="videoStatusBadge">
+                            <span>⏳</span> Đang tải...
+                        </span>
+                    </div>
+                    
+                    <div class="video-actions">
+                        <a href="${videoUrl}" target="_blank" class="video-action-btn">
+                            <span class="action-icon">📹</span>
+                            Mở trong tab mới
+                        </a>
+                        <button onclick="app.retryVideoPlayback()" class="video-action-btn secondary">
+                            <span class="action-icon">🔄</span>
+                            Thử lại
+                        </button>
+                    </div>
+                </div>
+            </div>
+        `;
+        } catch (error) {
+            console.error('❌ Error creating video info:', error);
+            return `<div class="error-state">Lỗi hiển thị thông tin</div>`;
+        }
+    }
+
+    // Thêm method retryVideoPlayback
+    retryVideoPlayback() {
+        const activeSessionItem = document.querySelector('.video-item.active');
+        if (activeSessionItem) {
+            // Tìm session data từ item (cần lưu session data trong dataset)
+            const sessionId = activeSessionItem.dataset.sessionId;
+            if (sessionId && this.lastSessions) {
+                const session = this.lastSessions.find(s => s.id === sessionId);
+                if (session) {
+                    console.log('🔄 Retrying video playback for session:', sessionId);
+                    this.playVideo(session);
+                }
+            }
         }
     }
 
