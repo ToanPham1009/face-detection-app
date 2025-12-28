@@ -1320,31 +1320,34 @@ class FaceDetectionApp {
 
         console.log('🎧 Setting up video event listeners...');
 
+        // Lưu reference đến this để dùng trong event handlers
+        const app = this;
+
         // Xử lý khi video bắt đầu load
         videoPlayer.onloadstart = () => {
             console.log('📥 Video loading started');
-            this.updateVideoStatus('Đang tải video...', 'loading', videoInfo);
+            app.updateVideoStatus('Đang tải video...', 'loading', videoInfo);
         };
 
         // Xử lý khi có đủ dữ liệu để phát
         videoPlayer.onloadeddata = () => {
             console.log('✅ Video data loaded');
-            this.updateVideoStatus('Đã tải xong', 'loaded', videoInfo);
+            app.updateVideoStatus('Đã tải xong', 'loaded', videoInfo);
 
             // Cập nhật thông tin chi tiết
-            videoInfo.innerHTML = this.createVideoInfoHTML(session, videoPlayer.src);
+            videoInfo.innerHTML = app.createVideoInfoHTML(session, videoPlayer.src);
         };
 
         // Xử lý khi video bắt đầu phát
         videoPlayer.onplaying = () => {
             console.log('▶️ Video is now playing');
-            this.updateVideoStatus('Đang phát', 'playing', videoInfo);
+            app.updateVideoStatus('Đang phát', 'playing', videoInfo);
         };
 
         // Xử lý khi video dừng
         videoPlayer.onpause = () => {
             console.log('⏸️ Video paused');
-            this.updateVideoStatus('Đang dừng', 'paused', videoInfo);
+            app.updateVideoStatus('Đang dừng', 'paused', videoInfo);
         };
 
         // Xử lý lỗi
@@ -1361,15 +1364,81 @@ class FaceDetectionApp {
                 }
             }
 
-            this.updateVideoStatus('Lỗi: ' + errorMessage, 'error', videoInfo);
-            this.showVideoError(new Error(errorMessage), session);
+            app.updateVideoStatus('Lỗi: ' + errorMessage, 'error', videoInfo);
+            app.showVideoError(new Error(errorMessage), session);
         };
 
         // Xử lý khi video kết thúc
         videoPlayer.onended = () => {
             console.log('🏁 Video ended');
-            this.updateVideoStatus('Đã kết thúc', 'ended', videoInfo);
+            app.updateVideoStatus('Đã kết thúc', 'ended', videoInfo);
         };
+    }
+
+    updateVideoStatus(message, status, videoInfo) {
+        if (!videoInfo) return;
+
+        console.log(`🎬 Video status: ${status} - ${message}`);
+
+        const statusElement = videoInfo.querySelector('#videoStatusBadge') ||
+            videoInfo.querySelector('.video-status');
+
+        if (statusElement) {
+            statusElement.textContent = message;
+            statusElement.className = `status-badge ${status}`;
+
+            // Thêm icon tương ứng
+            let icon = '';
+            switch (status) {
+                case 'loading': icon = '⏳'; break;
+                case 'loaded': icon = '✅'; break;
+                case 'playing': icon = '▶️'; break;
+                case 'paused': icon = '⏸️'; break;
+                case 'error': icon = '❌'; break;
+                case 'ended': icon = '🏁'; break;
+            }
+
+            if (icon) {
+                statusElement.innerHTML = `<span>${icon}</span> ${message}`;
+            }
+        }
+    }
+
+    // Thêm method showVideoError
+    showVideoError(error, session) {
+        console.error('❌ Video error:', error);
+
+        const videoInfo = document.getElementById('videoInfo');
+        if (!videoInfo) return;
+
+        const errorHTML = `
+        <div class="video-error-state">
+            <div class="error-icon">❌</div>
+            <h4 class="error-title">Lỗi tải video</h4>
+            <p class="error-message">${error.message || 'Không xác định'}</p>
+            <div class="error-details">
+                <p><strong>Session ID:</strong> ${session.id || 'N/A'}</p>
+                <p><strong>Thời gian:</strong> ${new Date(session.start_time).toLocaleString('vi-VN')}</p>
+                ${session.video_filename ?
+                `<p><strong>Video URL:</strong> <small>${session.video_filename.substring(0, 50)}...</small></p>` :
+                '<p><strong>Video:</strong> Không có</p>'
+            }
+            </div>
+            <div class="error-actions">
+                <button onclick="window.faceDetectionApp.retryVideoPlayback()" class="btn btn-primary">
+                    🔄 Thử lại
+                </button>
+                ${session.video_filename ?
+                `<a href="${session.video_filename}" target="_blank" class="btn btn-secondary">
+                        📹 Mở trong tab mới
+                    </a>` :
+                ''
+            }
+            </div>
+        </div>
+    `;
+
+        videoInfo.innerHTML = errorHTML;
     }
 
     // Thêm phương thức để xóa event listeners cũ
