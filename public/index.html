@@ -193,16 +193,23 @@
                             </div>
                         </div>
 
+                        <!-- Sửa phần history-right trong index.html -->
                         <div class="history-right">
                             <!-- Video player and details -->
                             <div class="video-player-section">
-                                <h3>🎬 Video Player</h3>
-                                <button id="captureFromVideo" class="btn btn-secondary">
-                                    📸 Chụp từ video
-                                </button>
+                                <div class="video-header">
+                                    <h3>🎬 Video Player</h3>
+                                    <button id="captureFromVideo" class="btn btn-primary">
+                                        📸 Chụp từ video
+                                    </button>
+                                </div>
 
                                 <div class="video-wrapper">
-                                    <video id="playbackVideo" controls></video>
+                                    <video id="playbackVideo" controls autoplay muted playsinline></video>
+                                    <div class="video-loading-overlay" id="videoLoading" style="display: none;">
+                                        <div class="spinner"></div>
+                                        <p>Đang tải video...</p>
+                                    </div>
                                 </div>
 
                                 <div id="videoInfo" class="video-info">
@@ -218,9 +225,16 @@
                             </div>
 
                             <div class="session-captures">
-                                <h3>📷 Hình đã chụp trong session</h3>
+                                <div class="captures-header">
+                                    <h3>📷 Hình đã chụp trong session</h3>
+                                    <div class="captures-count" id="capturesCount">(0 ảnh)</div>
+                                </div>
                                 <div id="sessionCapturedImages" class="captured-images-grid">
                                     <!-- Session images will be loaded here -->
+                                    <div class="empty-captures">
+                                        <div class="empty-icon">📷</div>
+                                        <p>Chưa có hình ảnh nào được chụp</p>
+                                    </div>
                                 </div>
                             </div>
                         </div>

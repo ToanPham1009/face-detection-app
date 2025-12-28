@@ -1215,19 +1215,9 @@ class FaceDetectionApp {
             const videoInfo = document.getElementById('videoInfo');
 
             // Kiểm tra DOM elements
-            if (!videoPlayer) {
-                console.error('❌ Video player element not found!');
-                throw new Error('Video player element not found');
-            }
-
-            if (!videoWrapper) {
-                console.error('❌ Video wrapper not found!');
-                throw new Error('Video wrapper not found');
-            }
-
-            if (!videoInfo) {
-                console.error('❌ Video info element not found!');
-                throw new Error('Video info element not found');
+            if (!videoPlayer || !videoWrapper || !videoInfo) {
+                console.error('❌ Missing DOM elements');
+                return;
             }
 
             console.log('✅ All DOM elements found');
@@ -1269,16 +1259,16 @@ class FaceDetectionApp {
             // Reset video player
             videoPlayer.style.display = 'block';
 
-            // Thêm poster loading
-            videoPlayer.poster = 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMTAwJSIgaGVpZ2h0PSIxMDAlIiB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciPjxyZWN0IHdpZHRoPSIxMDAlIiBoZWlnaHQ9IjEwdWxhdGUiIGZpbGw9IiMyMzFmMjAiLz48dGV4dCB4PSI1MCUiIHk9IjUwJSIgZm9udC1mYW1pbHk9IkFyaWFsIiBmb250LXNpemU9IjE2IiBmaWxsPSIjZmZmIiB0ZXh0LWFuY2hvcj0ibWlkZGxlIiBkeT0iLjNlbSI+TG9hZGluZyB2aWRlbzwvdGV4dD48L3N2Zz4=';
+            // Show loading
+            const loadingOverlay = videoWrapper.querySelector('.video-loading-overlay') ||
+                this.createLoadingOverlay();
+            if (!loadingOverlay.parentNode) {
+                videoWrapper.appendChild(loadingOverlay);
+            }
+            loadingOverlay.style.display = 'flex';
 
             // Hiển thị loading state trong video info
-            videoInfo.innerHTML = `
-            <div class="video-loading-state">
-                <div class="loading-spinner"></div>
-                <div class="loading-text">Đang tải video...</div>
-            </div>
-        `;
+            videoInfo.innerHTML = this.createVideoInfoHTML(session, videoUrl);
 
             // Set video source với cache busting
             const timestamp = new Date().getTime();
@@ -1292,17 +1282,8 @@ class FaceDetectionApp {
 
             console.log('✅ Video src set and load() called');
 
-            // Setup event listeners đơn giản
-            this.setupVideoEventListeners(videoPlayer, session, videoInfo);
-
-            // Thử auto-play sau 1 giây
-            setTimeout(() => {
-                if (videoPlayer.readyState >= 2) { // HAVE_CURRENT_DATA
-                    videoPlayer.play().catch(e => {
-                        console.log('⚠️ Auto-play blocked:', e.message);
-                    });
-                }
-            }, 1000);
+            // Setup event listeners
+            this.setupVideoEventListeners(videoPlayer, session, videoInfo, loadingOverlay);
 
             // Load hình ảnh của session
             await this.loadCapturesForSession(session.id);
@@ -1313,6 +1294,16 @@ class FaceDetectionApp {
             console.error('❌ Error in playVideo:', error);
             this.showVideoError(error, session);
         }
+    }
+
+    createLoadingOverlay() {
+        const overlay = document.createElement('div');
+        overlay.className = 'video-loading-overlay';
+        overlay.innerHTML = `
+        <div class="spinner"></div>
+        <p>Đang tải video...</p>
+    `;
+        return overlay;
     }
 
     setupVideoEventListeners(videoPlayer, session, videoInfo) {
@@ -1597,6 +1588,91 @@ class FaceDetectionApp {
             videoPlayer.load();
             this.showNotification('🔄 Đang tải lại video...', 'info');
         }
+    }
+
+    displaySessionCaptures(captures) {
+        const container = document.getElementById('sessionCapturedImages');
+        const countElement = document.getElementById('capturesCount');
+
+        if (!container) return;
+
+        if (!captures || captures.length === 0) {
+            container.innerHTML = `
+            <div class="empty-captures">
+                <div class="empty-icon">📷</div>
+                <h4 class="empty-title">Chưa có hình ảnh</h4>
+                <p class="empty-description">
+                    Chưa có hình ảnh nào được chụp từ session này.<br>
+                    Bạn có thể chụp ảnh từ video bằng nút "📸 Chụp từ video".
+                </p>
+            </div>
+        `;
+
+            if (countElement) {
+                countElement.textContent = '(0 ảnh)';
+            }
+            return;
+        }
+
+        // Cập nhật số lượng
+        if (countElement) {
+            countElement.textContent = `(${captures.length} ảnh)`;
+        }
+
+        // Xóa nội dung cũ
+        container.innerHTML = '';
+
+        // Sắp xếp theo thời gian mới nhất trước
+        captures.sort((a, b) => new Date(b.created_at || b.timestamp) - new Date(a.created_at || a.timestamp));
+
+        // Hiển thị tất cả ảnh (không giới hạn)
+        captures.forEach((capture, index) => {
+            const imageElement = this.createCaptureElement(capture, index);
+            container.appendChild(imageElement);
+        });
+    }
+
+    // Sửa lại createCaptureElement
+    createCaptureElement(capture, index) {
+        const div = document.createElement('div');
+        div.className = 'captured-image-grid-item';
+        div.dataset.captureId = capture.id || index;
+
+        // Format thời gian
+        const time = new Date(capture.created_at || capture.timestamp);
+        const timeText = time.toLocaleTimeString('vi-VN', {
+            hour: '2-digit',
+            minute: '2-digit'
+        });
+
+        // Thêm thông tin video time nếu có
+        let videoTimeText = '';
+        if (capture.video_time !== undefined) {
+            const mins = Math.floor(capture.video_time / 60);
+            const secs = Math.floor(capture.video_time % 60);
+            videoTimeText = `⏱️ ${mins}:${secs.toString().padStart(2, '0')}`;
+        }
+
+        div.innerHTML = `
+        <div class="capture-image-container">
+            <img src="${capture.url}" 
+                 alt="Captured image ${index + 1}" 
+                 loading="lazy"
+                 onerror="this.src='data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMTAwJSIgaGVpZ2h0PSIxMDAlIiB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciPjxyZWN0IHdpZHRoPSIxMDAlIiBoZWlnaHQ9IjEwMCUiIGZpbGw9IiNmOGY5ZmEiLz48dGV4dCB4PSI1MCUiIHk9IjUwJSIgZm9udC1mYW1pbHk9IkFyaWFsIiBmb250LXNpemU9IjEyIiBmaWxsPSIjNjM2NjY5IiB0ZXh0LWFuY2hvcj0ibWlkZGxlIiBkeT0iLjNlbSI+SW1hZ2Ugbm90IGZvdW5kPC90ZXh0Pjwvc3ZnPg=='">
+        </div>
+        <div class="captured-image-grid-info">
+            <div class="time">${timeText}</div>
+            ${videoTimeText ? `<div class="video-time">${videoTimeText}</div>` : ''}
+            <div class="source">${capture.source === 'camera' ? '📸 Chụp trực tiếp' : '🎬 Từ video'}</div>
+        </div>
+    `;
+
+        // Thêm sự kiện click để xem ảnh lớn
+        div.addEventListener('click', () => {
+            this.showImageModal(capture);
+        });
+
+        return div;
     }
 
     // Tạo HTML khi không có video
