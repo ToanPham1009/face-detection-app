@@ -282,6 +282,272 @@ class FaceDetectionApp {
         }
     }
 
+    // Trong app.js, tìm hàm loadSessionVideo và sửa như sau:
+    async loadSessionVideo(sessionId) {
+        console.log(`🎬 Loading video for session: ${sessionId}`);
+
+        const videoPlayer = document.getElementById('playbackVideo');
+        const videoLoading = document.getElementById('videoLoading');
+        const noVideoOverlay = document.getElementById('noVideoOverlay');
+        const videoInfo = document.getElementById('videoInfo');
+        const captureFromVideoBtn = document.getElementById('captureFromVideo');
+
+        // Ẩn video và hiển thị loading
+        videoPlayer.style.display = 'none';
+        if (noVideoOverlay) noVideoOverlay.style.display = 'none';
+        if (videoLoading) videoLoading.style.display = 'flex';
+        if (videoInfo) videoInfo.style.display = 'none';
+        if (captureFromVideoBtn) captureFromVideoBtn.disabled = true;
+
+        // Tạm dừng video hiện tại và reset src
+        videoPlayer.pause();
+        videoPlayer.src = '';
+        videoPlayer.load();
+
+        try {
+            // Lấy thông tin session từ API
+            const response = await fetch(`/api/sessions/${sessionId}`, {
+                headers: {
+                    'Authorization': `Bearer ${window.authManager?.token || localStorage.getItem('authToken')}`
+                }
+            });
+
+            if (!response.ok) {
+                throw new Error(`Failed to load session: ${response.status}`);
+            }
+
+            const session = await response.json();
+            console.log('📊 Session data:', session);
+
+            // Kiểm tra xem session có video không
+            if (!session.video_url && !session.video_path) {
+                throw new Error('Session không có video');
+            }
+
+            // Xây dựng URL video
+            let videoUrl = '';
+            if (session.video_url) {
+                videoUrl = session.video_url;
+            } else if (session.video_path) {
+                // Nếu là đường dẫn tương đối, thêm base URL
+                videoUrl = `/api/videos/${sessionId}`;
+            }
+
+            console.log(`📺 Video URL: ${videoUrl}`);
+
+            // Đặt src cho video player
+            videoPlayer.src = videoUrl;
+
+            // Thêm tham số để tránh cache
+            videoPlayer.src += `?t=${Date.now()}`;
+
+            // Đặt poster (hình ảnh đại diện) nếu có
+            if (session.thumbnail_url) {
+                videoPlayer.poster = session.thumbnail_url;
+            }
+
+            // Load video metadata
+            await this.loadVideoMetadata(videoPlayer, session);
+
+            // Hiển thị video
+            videoPlayer.style.display = 'block';
+            if (noVideoOverlay) noVideoOverlay.style.display = 'none';
+            if (videoLoading) videoLoading.style.display = 'none';
+            if (videoInfo) videoInfo.style.display = 'block';
+            if (captureFromVideoBtn) captureFromVideoBtn.disabled = false;
+
+            // Hiển thị thông tin video
+            this.displayVideoInfo(session);
+
+            // Load hình ảnh đã chụp
+            this.loadSessionImages(sessionId);
+
+        } catch (error) {
+            console.error('❌ Error loading video:', error);
+
+            // Hiển thị thông báo lỗi
+            if (noVideoOverlay) {
+                noVideoOverlay.innerHTML = `
+                <div class="empty-icon">❌</div>
+                <h4>Không thể tải video</h4>
+                <p>${error.message || 'Video không khả dụng'}</p>
+                <small>Session ID: ${sessionId}</small>
+            `;
+                noVideoOverlay.style.display = 'flex';
+            }
+
+            if (videoLoading) videoLoading.style.display = 'none';
+            videoPlayer.style.display = 'none';
+            if (videoInfo) videoInfo.style.display = 'none';
+            if (captureFromVideoBtn) captureFromVideoBtn.disabled = true;
+
+            // Reset video player
+            videoPlayer.src = '';
+            videoPlayer.load();
+        }
+    }
+
+    async loadSessionImages(sessionId) {
+        console.log(`📷 Loading images for session: ${sessionId}`);
+
+        const container = document.getElementById('sessionCapturedImages');
+        const countElement = document.getElementById('capturesCount');
+
+        if (!container) return;
+
+        // Hiển thị loading
+        container.innerHTML = `
+        <div class="loading-state">
+            <div class="spinner-small"></div>
+            <p>Đang tải hình ảnh...</p>
+        </div>
+    `;
+
+        try {
+            // Gọi API để lấy hình ảnh
+            const response = await fetch(`/api/sessions/${sessionId}/images`, {
+                headers: {
+                    'Authorization': `Bearer ${window.authManager?.token || localStorage.getItem('authToken')}`
+                }
+            });
+
+            if (!response.ok) {
+                throw new Error(`Failed to load images: ${response.status}`);
+            }
+
+            const images = await response.json();
+            console.log(`📸 Loaded ${images.length} images`);
+
+            // Cập nhật số lượng
+            if (countElement) {
+                countElement.textContent = `(${images.length} ảnh)`;
+            }
+
+            // Hiển thị hình ảnh
+            this.displaySessionImages(container, images);
+
+        } catch (error) {
+            console.error('❌ Error loading images:', error);
+
+            container.innerHTML = `
+            <div class="empty-state">
+                <div class="empty-icon">❌</div>
+                <p>Không thể tải hình ảnh</p>
+                <small>${error.message || 'Lỗi kết nối'}</small>
+            </div>
+        `;
+
+            if (countElement) {
+                countElement.textContent = '(0 ảnh)';
+            }
+        }
+    }
+
+    displaySessionImages(container, images) {
+        if (!images || images.length === 0) {
+            container.innerHTML = `
+            <div class="empty-state">
+                <div class="empty-icon">📷</div>
+                <p>Không có hình ảnh nào được chụp</p>
+            </div>
+        `;
+            return;
+        }
+
+        // Tạo HTML cho từng hình ảnh
+        const imagesHTML = images.map((image, index) => {
+            const timestamp = image.timestamp || image.created_at;
+            const date = timestamp ? new Date(timestamp).toLocaleTimeString('vi-VN') : '';
+
+            return `
+            <div class="captured-image-item" data-index="${index}">
+                <img src="${image.url || image.thumbnail_url || '#'}" 
+                     alt="Ảnh chụp ${index + 1}"
+                     onerror="this.src='data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMTIwIiBoZWlnaHQ9IjEyMCIgdmlld0JveD0iMCAwIDEyMCAxMjAiIGZpbGw9IiNmMGYwZjAiPjxyZWN0IHdpZHRoPSIxMjAiIGhlaWdodD0iMTIwIiByeD0iNiIvPjx0ZXh0IHg9IjYwIiB5PSI2MCIgdGV4dC1hbmNob3I9Im1pZGRsZSIgZm9udC1mYW1pbHk9IkFyaWFsIiBmb250LXNpemU9IjE0IiBmaWxsPSIjOTk5Ij7Im4XhuqNwIDx0c3Bhbj4kKGlbmRleCsxKTwvdHNwYW4+PC90ZXh0Pjwvc3ZnPg=='">
+                <div class="capture-time">${date}</div>
+            </div>
+        `;
+        }).join('');
+
+        container.innerHTML = imagesHTML;
+    }
+
+    // Thêm hàm mới để load metadata
+    async loadVideoMetadata(videoPlayer, session) {
+        return new Promise((resolve, reject) => {
+            const onLoadedMetadata = () => {
+                console.log('✅ Video metadata loaded');
+                videoPlayer.removeEventListener('loadedmetadata', onLoadedMetadata);
+                videoPlayer.removeEventListener('error', onError);
+                resolve();
+            };
+
+            const onError = (error) => {
+                console.error('❌ Video metadata error:', error);
+                videoPlayer.removeEventListener('loadedmetadata', onLoadedMetadata);
+                videoPlayer.removeEventListener('error', onError);
+
+                // Nếu không load được metadata, vẫn hiển thị thông tin từ session
+                console.warn('⚠️ Using session data instead of metadata');
+                resolve();
+            };
+
+            videoPlayer.addEventListener('loadedmetadata', onLoadedMetadata);
+            videoPlayer.addEventListener('error', onError);
+
+            // Timeout sau 10 giây
+            setTimeout(() => {
+                videoPlayer.removeEventListener('loadedmetadata', onLoadedMetadata);
+                videoPlayer.removeEventListener('error', onError);
+                console.warn('⚠️ Video metadata loading timeout');
+                resolve();
+            }, 10000);
+
+            // Load video
+            videoPlayer.load();
+        });
+    }
+
+    // Hàm hiển thị thông tin video
+    displayVideoInfo(session) {
+        const videoDate = document.getElementById('videoDate');
+        const videoDuration = document.getElementById('videoDuration');
+        const videoFaces = document.getElementById('videoFaces');
+        const videoSize = document.getElementById('videoSize');
+
+        if (videoDate) {
+            const date = new Date(session.created_at || session.timestamp);
+            videoDate.textContent = date.toLocaleDateString('vi-VN');
+        }
+
+        if (videoDuration) {
+            if (session.duration) {
+                videoDuration.textContent = `${session.duration}s`;
+            } else {
+                videoDuration.textContent = '--';
+            }
+        }
+
+        if (videoFaces) {
+            if (session.total_faces !== undefined) {
+                videoFaces.textContent = session.total_faces;
+            } else if (session.face_count !== undefined) {
+                videoFaces.textContent = session.face_count;
+            } else {
+                videoFaces.textContent = '--';
+            }
+        }
+
+        if (videoSize) {
+            if (session.file_size) {
+                const sizeMB = (session.file_size / (1024 * 1024)).toFixed(2);
+                videoSize.textContent = `${sizeMB} MB`;
+            } else {
+                videoSize.textContent = '--';
+            }
+        }
+    }
+
     createCaptureElement(capture, index) {
         const div = document.createElement('div');
         div.className = 'captured-image-grid-item';

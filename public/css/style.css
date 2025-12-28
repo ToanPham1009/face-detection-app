@@ -848,13 +848,16 @@ h1 {
     border-radius: 8px;
     overflow: hidden;
     min-height: 300px;
+    display: flex;
+    justify-content: center;
+    align-items: center;
 }
 
 .video-wrapper video {
     width: 100%;
-    height: auto;
     max-height: 400px;
     background: #000;
+    display: block;
 }
 
 .no-video-selected-overlay {
@@ -869,6 +872,8 @@ h1 {
     align-items: center;
     background: #f8f9fa;
     color: #6c757d;
+    padding: 20px;
+    text-align: center;
 }
 
 .section-header {
@@ -903,30 +908,36 @@ h1 {
 }
 
 .video-info {
+    margin-top: 15px;
+    padding: 15px;
     background: #f8f9fa;
     border-radius: 8px;
-    padding: 20px;
-    flex: 1;
-    min-height: 200px;
-    display: flex;
-    flex-direction: column;
+}
+
+.info-grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 10px;
 }
 
 .info-item {
     display: flex;
     justify-content: space-between;
-    padding: 8px 0;
-    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+    align-items: center;
+    padding: 8px 12px;
+    background: white;
+    border-radius: 6px;
+    border: 1px solid #e9ecef;
 }
 
 .info-label {
-    color: #cbd5e0;
-    font-weight: 500;
+    font-weight: 600;
+    color: #495057;
 }
 
 .info-value {
-    color: white;
-    font-weight: bold;
+    color: #212529;
+    font-weight: 500;
 }
 
 .info-item:last-child {
@@ -2373,17 +2384,19 @@ h1 {
     overflow: hidden;
     box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
     transition: transform 0.2s;
+    background: white;
 }
 
 .captured-image-item:hover {
     transform: scale(1.05);
-    border-color: #667eea;
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
 }
 
 .captured-image-item img {
     width: 100%;
     height: 120px;
     object-fit: cover;
+    display: block;
 }
 
 .capture-time {
@@ -2396,6 +2409,13 @@ h1 {
     padding: 4px;
     font-size: 11px;
     text-align: center;
+}
+
+.loading-state {
+    grid-column: 1 / -1;
+    text-align: center;
+    padding: 30px;
+    color: #6c757d;
 }
 
 .captured-image-info {
@@ -2448,6 +2468,7 @@ h1 {
     padding-bottom: 10px;
 }
 
+/* Session images */
 .captured-images-grid {
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
@@ -2565,13 +2586,13 @@ h1 {
     position: absolute;
     top: 0;
     left: 0;
-    width: 100%;
-    height: 100%;
-    background: rgba(0, 0, 0, 0.8);
+    right: 0;
+    bottom: 0;
     display: flex;
     flex-direction: column;
     justify-content: center;
     align-items: center;
+    background: rgba(0, 0, 0, 0.7);
     color: white;
     z-index: 10;
 }
@@ -2597,10 +2618,6 @@ h1 {
 }
 
 /* Video info styles */
-.video-info {
-    margin-top: 20px;
-}
-
 .no-video-selected {
     display: flex;
     align-items: center;
@@ -3131,6 +3148,16 @@ h1 {
     text-align: center;
     padding: 30px;
     color: #6c757d;
+}
+
+.spinner-small {
+    width: 24px;
+    height: 24px;
+    border: 3px solid #f3f3f3;
+    border-top: 3px solid #3498db;
+    border-radius: 50%;
+    animation: spin 1s linear infinite;
+    margin: 0 auto 10px;
 }
 
 .empty-state-icon {
