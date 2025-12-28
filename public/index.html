@@ -145,11 +145,17 @@
                     <button id="stopCamera" class="btn btn-danger" disabled>⏹️ Tắt Camera</button>
                     <button id="startTracking" class="btn btn-success" disabled>🎬 Bắt đầu Theo dõi</button>
                     <button id="stopTracking" class="btn btn-warning" disabled>⏹️ Dừng Theo dõi</button>
-
                 </div>
+                
+                <!-- Thay thế phần capture-section với cấu trúc rõ ràng hơn -->
                 <div class="capture-section">
-                    <div class="camera-container">
-                        <canvas id="faceCanvas"></canvas>
+                    <div class="main-camera-section">
+                        <div class="camera-container">
+                            <canvas id="faceCanvas" width="640" height="480"></canvas>
+                            <div class="camera-overlay">
+                                <div class="camera-label">🎥 LIVE CAMERA</div>
+                            </div>
+                        </div>
                         <div class="capture-controls">
                             <button id="captureImage" class="btn btn-capture">
                                 📸 Chụp hình hiện tại
@@ -157,14 +163,20 @@
                         </div>
                     </div>
 
-                    <div class="captured-images-preview">
-                        <h3>📷 Hình đã chụp</h3>
-                        <div id="liveCapturedImages" class="captured-images-list">
+                    <div class="captured-images-section">
+                        <div class="section-header">
+                            <h3>📷 Hình đã chụp</h3>
+                            <span id="liveCaptureCount" class="count-badge">(0)</span>
+                        </div>
+                        <div id="liveCapturedImages" class="captured-images-grid">
                             <!-- Hình ảnh sẽ hiển thị ở đây -->
+                            <div class="empty-state">
+                                <div class="empty-icon">📷</div>
+                                <p>Chưa có hình ảnh nào được chụp</p>
+                            </div>
                         </div>
                     </div>
                 </div>
-
 
                 <div class="stats">
                     <div class="stat-card">
@@ -184,57 +196,79 @@
 
             <!-- Video History Tab -->
             <div class="tab-content" id="history-tab">
-                <div class="history-tab">
-                    <div class="history-container">
-                        <div class="history-left">
+                <div class="history-container">
+                    <div class="history-left">
+                        <div class="section-header">
                             <h3>📁 Danh sách video đã lưu</h3>
-                            <div id="videoList" class="video-list-container">
-                                <!-- Sessions will be loaded here -->
+                            <button id="refreshHistory" class="btn btn-sm btn-refresh">🔄 Làm mới</button>
+                        </div>
+                        <div id="videoList" class="video-list-container">
+                            <!-- Sessions sẽ được tải ở đây -->
+                            <div class="loading-sessions">
+                                <div class="spinner-small"></div>
+                                <p>Đang tải danh sách session...</p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="history-right">
+                        <!-- Video player section -->
+                        <div class="video-player-section">
+                            <div class="section-header">
+                                <h3>🎬 Video Player</h3>
+                                <button id="captureFromVideo" class="btn btn-primary" disabled>
+                                    📸 Chụp từ video
+                                </button>
+                            </div>
+                            
+                            <div class="video-wrapper">
+                                <video id="playbackVideo" controls playsinline preload="metadata">
+                                    <!-- Video sẽ được tải vào đây -->
+                                </video>
+                                <div class="video-loading-overlay" id="videoLoading" style="display: none;">
+                                    <div class="spinner"></div>
+                                    <p>Đang tải video...</p>
+                                </div>
+                                <div class="no-video-selected-overlay" id="noVideoOverlay">
+                                    <div class="empty-icon">📹</div>
+                                    <h4>Chưa có video được chọn</h4>
+                                    <p>Vui lòng chọn một session từ danh sách bên trái</p>
+                                </div>
+                            </div>
+                            
+                            <div id="videoInfo" class="video-info" style="display: none;">
+                                <div class="info-grid">
+                                    <div class="info-item">
+                                        <span class="info-label">📅 Ngày tạo:</span>
+                                        <span class="info-value" id="videoDate">--/--/----</span>
+                                    </div>
+                                    <div class="info-item">
+                                        <span class="info-label">⏱️ Thời lượng:</span>
+                                        <span class="info-value" id="videoDuration">0s</span>
+                                    </div>
+                                    <div class="info-item">
+                                        <span class="info-label">👤 Số khuôn mặt:</span>
+                                        <span class="info-value" id="videoFaces">0</span>
+                                    </div>
+                                    <div class="info-item">
+                                        <span class="info-label">💾 Kích thước:</span>
+                                        <span class="info-value" id="videoSize">0 MB</span>
+                                    </div>
+                                </div>
                             </div>
                         </div>
 
-                        <!-- Sửa phần history-right trong index.html -->
-                        <div class="history-right">
-                            <!-- Video player and details -->
-                            <div class="video-player-section">
-                                <div class="video-header">
-                                    <h3>🎬 Video Player</h3>
-                                    <button id="captureFromVideo" class="btn btn-primary">
-                                        📸 Chụp từ video
-                                    </button>
-                                </div>
-
-                                <div class="video-wrapper">
-                                    <video id="playbackVideo" controls autoplay muted playsinline></video>
-                                    <div class="video-loading-overlay" id="videoLoading" style="display: none;">
-                                        <div class="spinner"></div>
-                                        <p>Đang tải video...</p>
-                                    </div>
-                                </div>
-
-                                <div id="videoInfo" class="video-info">
-                                    <div class="no-video-selected">
-                                        <div class="icon">📹</div>
-                                        <div>
-                                            <h4>Chưa có video được chọn</h4>
-                                            <p>Vui lòng chọn một session từ danh sách bên trái để xem video và thông tin
-                                                chi tiết.</p>
-                                        </div>
-                                    </div>
-                                </div>
+                        <!-- Session captures section -->
+                        <div class="session-captures-section">
+                            <div class="section-header">
+                                <h3>📷 Hình đã chụp trong session</h3>
+                                <div class="captures-count" id="capturesCount">(0 ảnh)</div>
                             </div>
-
-                            <div class="session-captures">
-                                <div class="captures-header">
-                                    <h3>📷 Hình đã chụp trong session</h3>
-                                    <div class="captures-count" id="capturesCount">(0 ảnh)</div>
-                                </div>
-                                <div id="sessionCapturedImages" class="captured-images-grid">
-                                    <!-- Session images will be loaded here -->
-                                    <div class="empty-captures">
-                                        <div class="empty-icon">📷</div>
-                                        <p>Chưa có hình ảnh nào được chụp</p>
-                                    </div>
+                            
+                            <div id="sessionCapturedImages" class="captured-images-grid">
+                                <div class="empty-state">
+                                    <div class="empty-icon">📷</div>
+                                    <p>Chọn session để xem hình ảnh</p>
                                 </div>
                             </div>
                         </div>
@@ -253,8 +287,7 @@
                             <div class="session-info" id="deleteSessionInfo">
                                 <!-- Thông tin session sẽ được điền ở đây -->
                             </div>
-                            <p class="warning-text">⚠️ Hành động này không thể hoàn tác! Video và dữ liệu sẽ bị xóa vĩnh
-                                viễn.</p>
+                            <p class="warning-text">⚠️ Hành động này không thể hoàn tác! Video và dữ liệu sẽ bị xóa vĩnh viễn.</p>
                         </div>
                         <div class="modal-footer">
                             <button id="confirmDelete" class="btn btn-danger">Xác nhận xóa</button>
@@ -606,18 +639,11 @@
     <script src="js/faceDetection.js"></script>
     <script src="js/app.js"></script>
 
-
     <!-- Thêm vào head của file HTML -->
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
-    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/control_utils/control_utils.js"
-        crossorigin="anonymous"></script>
-    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js"
-        crossorigin="anonymous"></script>
-    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/face_detection/face_detection.js"
-        crossorigin="anonymous"></script>
-    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/face_detection/face_detection.js"
-        crossorigin="anonymous"></script>
-
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/control_utils/control_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/face_detection/face_detection.js" crossorigin="anonymous"></script>
 
     <script>
         // Chạy sau khi tất cả scripts đã load
