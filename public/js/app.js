@@ -198,27 +198,34 @@ class FaceDetectionApp {
         }
     }
 
-    // Thêm phương thức để load hình ảnh từ database
     async loadCapturesForSession(sessionId) {
         try {
             console.log(`📷 Loading captures for session: ${sessionId}`);
 
+            // Gọi API mới (giống video)
             const response = await fetch(`/api/captures/session/${sessionId}`);
 
             if (response.ok) {
                 const captures = await response.json();
-                console.log(`✅ Loaded ${captures.length} captures from database`);
+
+                // Đảm bảo tất cả URL đều dùng HTTPS
+                const securedCaptures = captures.map(capture => ({
+                    ...capture,
+                    url: this.ensureHttpsUrl(capture.url)
+                }));
+
+                console.log(`✅ Loaded ${securedCaptures.length} captures from database`);
 
                 // Lưu vào currentSessionImages
-                this.currentSessionImages.set(sessionId, captures);
+                this.currentSessionImages.set(sessionId, securedCaptures);
 
                 // Cập nhật localStorage
-                this.saveSessionImagesToLocalStorage(sessionId, captures);
+                this.saveSessionImagesToLocalStorage(sessionId, securedCaptures);
 
                 // Hiển thị hình ảnh
-                this.displaySessionCaptures(captures);
+                this.displaySessionCaptures(securedCaptures);
 
-                return captures;
+                return securedCaptures;
             } else {
                 console.warn(`⚠️ No captures found for session: ${sessionId}`);
                 // Load từ localStorage nếu có
@@ -275,20 +282,40 @@ class FaceDetectionApp {
         }
     }
 
-    // Tạo element cho ảnh capture (sửa lại từ createImageElement)
-    createCaptureElement(capture) {
+    createCaptureElement(capture, index) {
         const div = document.createElement('div');
         div.className = 'captured-image-grid-item';
+        div.dataset.captureId = capture.id || index;
+        div.dataset.publicId = capture.public_id || '';
 
+        // Đảm bảo URL dùng HTTPS
+        const secureUrl = this.ensureHttpsUrl(capture.url);
+
+        // Format thời gian
         const time = new Date(capture.created_at || capture.timestamp);
-        const timeText = capture.video_time
-            ? `${time.toLocaleTimeString('vi-VN')} (⏱️ ${this.formatVideoTime(capture.video_time)})`
-            : time.toLocaleTimeString('vi-VN');
+        const timeText = time.toLocaleTimeString('vi-VN', {
+            hour: '2-digit',
+            minute: '2-digit'
+        });
+
+        // Thêm thông tin video time nếu có
+        let videoTimeText = '';
+        if (capture.video_time !== undefined && capture.video_time !== null) {
+            const mins = Math.floor(capture.video_time / 60);
+            const secs = Math.floor(capture.video_time % 60);
+            videoTimeText = `⏱️ ${mins}:${secs.toString().padStart(2, '0')}`;
+        }
 
         div.innerHTML = `
-        <img src="${capture.url}" alt="Captured image" loading="lazy">
+        <div class="capture-image-container">
+            <img src="${secureUrl}" 
+                 alt="Captured image ${index + 1}" 
+                 loading="lazy"
+                 onerror="this.onerror=null; this.src='data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMTAwJSIgaGVpZ2h0PSIxMDAlIiB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciPjxyZWN0IHdpZHRoPSIxMDAlIiBoZWlnaHQ9IjEwMCUiIGZpbGw9IiNmOGY5ZmEiLz48dGV4dCB4PSI1MCUiIHk9IjUwJSIgZm9udC1mYW1pbHk9IkFyaWFsIiBmb250LXNpemU9IjEyIiBmaWxsPSIjNjM2NjY5IiB0ZXh0LWFuY2hvcj0ibWlkZGxlIiBkeT0iLjNlbSI+SW1hZ2Ugbm90IGZvdW5kPC90ZXh0Pjwvc3ZnPg='">
+        </div>
         <div class="captured-image-grid-info">
             <div class="time">${timeText}</div>
+            ${videoTimeText ? `<div class="video-time">${videoTimeText}</div>` : ''}
             <div class="source">${capture.source === 'camera' ? '📸 Chụp trực tiếp' : '🎬 Từ video'}</div>
         </div>
     `;
@@ -494,62 +521,87 @@ class FaceDetectionApp {
         }
     }
 
-    // Lưu hình ảnh lên server
     async saveCapturedImage(blob, source = 'camera', metadata = {}) {
         try {
-            const formData = new FormData();
             const timestamp = new Date().getTime();
             const filename = `capture_${timestamp}.jpg`;
 
+            console.log(`📤 Uploading captured image to Cloudinary: ${filename}`);
+
+            // Tạo FormData cho upload (giống video upload)
+            const formData = new FormData();
             formData.append('image', blob, filename);
             formData.append('source', source);
-            formData.append('timestamp', timestamp);
+            formData.append('timestamp', timestamp.toString());
             formData.append('sessionId', this.currentSessionId || 'live');
 
             // Thêm metadata nếu có
             if (metadata.videoTime) {
-                formData.append('videoTime', metadata.videoTime);
+                formData.append('videoTime', metadata.videoTime.toString());
             }
             if (this.faceDetector?.totalFacesCount) {
-                formData.append('faceCount', this.faceDetector.totalFacesCount);
+                formData.append('faceCount', this.faceDetector.totalFacesCount.toString());
             }
 
-            console.log(`📤 Uploading captured image: ${filename}`);
-
+            // Gửi đến API để upload lên Cloudinary (giống video)
             const response = await fetch('/api/captures/upload', {
                 method: 'POST',
-                // KHÔNG thêm headers khi dùng FormData
                 body: formData
             });
 
-            if (response.ok) {
-                const result = await response.json();
-                console.log('✅ Image saved:', result);
-
-                const imageData = {
-                    id: result.id || timestamp,
-                    url: result.url,
-                    filename: result.filename,
-                    timestamp: timestamp,
-                    source: source,
-                    sessionId: this.currentSessionId || 'live',
-                    timeString: new Date(timestamp).toLocaleTimeString('vi-VN'),
-                    metadata: metadata
-                };
-
-                // Lưu vào local storage
-                this.saveToLocalStorage(imageData);
-
-                return imageData;
-            } else {
+            if (!response.ok) {
                 const errorText = await response.text();
                 console.error('❌ Upload failed:', errorText);
-                throw new Error('Upload failed');
+                throw new Error('Upload failed: ' + errorText);
             }
-        } catch (error) {
-            console.error('❌ Error saving image:', error);
 
-            // Fallback: tạo URL tạm từ blob
+            const result = await response.json();
+            console.log('✅ Image uploaded to Cloudinary:', result);
+
+            // Đảm bảo URL dùng HTTPS
+            const secureUrl = this.ensureHttpsUrl(result.url);
+
+            const imageData = {
+                id: result.id || timestamp,
+                url: secureUrl,
+                public_id: result.public_id,
+                filename: result.filename || filename,
+                timestamp: timestamp,
+                source: source,
+                sessionId: this.currentSessionId || 'live',
+                created_at: result.created_at || new Date().toISOString(),
+                timeString: new Date(timestamp).toLocaleTimeString('vi-VN'),
+                metadata: metadata
+            };
+
+            // Lưu vào local storage và current session
+            this.saveToLocalStorage(imageData);
+
+            // Thêm vào current session images
+            if (this.currentSessionId && this.currentSessionId !== 'live') {
+                if (!this.currentSessionImages.has(this.currentSessionId)) {
+                    this.currentSessionImages.set(this.currentSessionId, []);
+                }
+                const sessionImages = this.currentSessionImages.get(this.currentSessionId);
+                sessionImages.unshift(imageData);
+
+                // Giới hạn 50 ảnh mỗi session
+                if (sessionImages.length > 50) {
+                    sessionImages.pop();
+                }
+
+                // Cập nhật UI nếu đang xem session này
+                if (document.getElementById('sessionCapturedImages')) {
+                    this.displaySessionCaptures(sessionImages);
+                }
+            }
+
+            return imageData;
+
+        } catch (error) {
+            console.error('❌ Error uploading image to Cloudinary:', error);
+
+            // Fallback cho development (không có Cloudinary)
             const tempUrl = URL.createObjectURL(blob);
             const timestamp = new Date().getTime();
 
@@ -560,16 +612,36 @@ class FaceDetectionApp {
                 timestamp: timestamp,
                 source: source,
                 sessionId: this.currentSessionId || 'live',
+                created_at: new Date().toISOString(),
                 timeString: new Date(timestamp).toLocaleTimeString('vi-VN'),
                 metadata: metadata,
-                isLocal: true // Đánh dấu là ảnh local
+                isLocal: true
             };
 
-            // Lưu vào local storage
+            // Vẫn lưu vào local storage
             this.saveToLocalStorage(imageData);
 
             return imageData;
         }
+    }
+
+    // Thêm vào class FaceDetectionApp
+    ensureHttpsUrl(url) {
+        if (!url) return url;
+
+        // Kiểm tra xem URL có bắt đầu bằng http:// không
+        if (url.startsWith('http://')) {
+            console.log(`🔄 Converting HTTP to HTTPS: ${url}`);
+            return url.replace('http://', 'https://');
+        }
+
+        // Nếu URL không có protocol, thêm https://
+        if (url.startsWith('//')) {
+            console.log(`🔄 Adding HTTPS protocol: ${url}`);
+            return 'https:' + url;
+        }
+
+        return url;
     }
 
     // Lưu vào localStorage
@@ -1632,48 +1704,6 @@ class FaceDetectionApp {
         });
     }
 
-    // Sửa lại createCaptureElement
-    createCaptureElement(capture, index) {
-        const div = document.createElement('div');
-        div.className = 'captured-image-grid-item';
-        div.dataset.captureId = capture.id || index;
-
-        // Format thời gian
-        const time = new Date(capture.created_at || capture.timestamp);
-        const timeText = time.toLocaleTimeString('vi-VN', {
-            hour: '2-digit',
-            minute: '2-digit'
-        });
-
-        // Thêm thông tin video time nếu có
-        let videoTimeText = '';
-        if (capture.video_time !== undefined) {
-            const mins = Math.floor(capture.video_time / 60);
-            const secs = Math.floor(capture.video_time % 60);
-            videoTimeText = `⏱️ ${mins}:${secs.toString().padStart(2, '0')}`;
-        }
-
-        div.innerHTML = `
-        <div class="capture-image-container">
-            <img src="${capture.url}" 
-                 alt="Captured image ${index + 1}" 
-                 loading="lazy"
-                 onerror="this.src='data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMTAwJSIgaGVpZ2h0PSIxMDAlIiB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciPjxyZWN0IHdpZHRoPSIxMDAlIiBoZWlnaHQ9IjEwMCUiIGZpbGw9IiNmOGY5ZmEiLz48dGV4dCB4PSI1MCUiIHk9IjUwJSIgZm9udC1mYW1pbHk9IkFyaWFsIiBmb250LXNpemU9IjEyIiBmaWxsPSIjNjM2NjY5IiB0ZXh0LWFuY2hvcj0ibWlkZGxlIiBkeT0iLjNlbSI+SW1hZ2Ugbm90IGZvdW5kPC90ZXh0Pjwvc3ZnPg=='">
-        </div>
-        <div class="captured-image-grid-info">
-            <div class="time">${timeText}</div>
-            ${videoTimeText ? `<div class="video-time">${videoTimeText}</div>` : ''}
-            <div class="source">${capture.source === 'camera' ? '📸 Chụp trực tiếp' : '🎬 Từ video'}</div>
-        </div>
-    `;
-
-        // Thêm sự kiện click để xem ảnh lớn
-        div.addEventListener('click', () => {
-            this.showImageModal(capture);
-        });
-
-        return div;
-    }
 
     // Tạo HTML khi không có video
     createNoVideoHTML(session) {
