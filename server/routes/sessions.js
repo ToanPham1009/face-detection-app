@@ -14,9 +14,9 @@ router.get('/', async (req, res) => {
         res.json(result.rows);
     } catch (error) {
         console.error('Error fetching sessions:', error);
-        res.status(500).json({ 
+        res.status(500).json({
             error: 'Failed to fetch sessions',
-            details: error.message 
+            details: error.message
         });
     }
 });
@@ -62,9 +62,9 @@ router.post('/', async (req, res) => {
         res.status(201).json(result.rows[0]);
     } catch (error) {
         console.error('❌ Error saving session:', error);
-        res.status(500).json({ 
+        res.status(500).json({
             error: 'Failed to save session',
-            details: error.message 
+            details: error.message
         });
     }
 });
@@ -86,10 +86,43 @@ router.get('/:id', async (req, res) => {
         res.json(result.rows[0]);
     } catch (error) {
         console.error('Error fetching session:', error);
-        res.status(500).json({ 
+        res.status(500).json({
             error: 'Failed to fetch session',
-            details: error.message 
+            details: error.message
         });
+    }
+});
+
+// Get session images
+router.get('/:id/images', async (req, res) => {
+    const { id } = req.params;
+
+    try {
+        console.log(`📸 Fetching images for session: ${id}`);
+
+        // Kiểm tra nếu có bảng captures
+        const result = await pool.query(`
+            SELECT * FROM captures 
+            WHERE session_id = $1 
+            ORDER BY created_at DESC
+        `, [id]);
+
+        console.log(`✅ Found ${result.rows.length} images for session ${id}`);
+        res.json(result.rows);
+
+    } catch (error) {
+        console.error('❌ Error fetching session images:', error);
+
+        // Nếu bảng captures không tồn tại, trả về mảng rỗng
+        if (error.message.includes('relation "captures" does not exist')) {
+            console.log('⚠️ Captures table does not exist, returning empty array');
+            res.json([]);
+        } else {
+            res.status(500).json({
+                error: 'Failed to fetch session images',
+                details: error.message
+            });
+        }
     }
 });
 
