@@ -893,9 +893,13 @@ h1 {
 
 #playbackVideo {
     width: 100%;
-    max-height: 400px;
+    height: 100%;
+    object-fit: contain;
     background: #000;
-    border-radius: 8px;
+    display: block !important;
+    z-index: 1;
+    position: relative;
+    /* Cần position để z-index hoạt động */
 }
 
 
@@ -2584,11 +2588,12 @@ h1 {
     left: 0;
     right: 0;
     bottom: 0;
-    display: flex;
+    display: none;
+    /* MẶC ĐỊNH ẨN */
     flex-direction: column;
     justify-content: center;
     align-items: center;
-    background: rgba(0, 0, 0, 0.7);
+    background: rgba(0, 0, 0, 0.8);
     color: white;
     z-index: 10;
 }
@@ -3186,10 +3191,22 @@ h1 {
     margin-bottom: 3px;
 }
 
-.no-video-selected-overlay .btn-sm {
-    padding: 6px 12px;
-    font-size: 12px;
-    margin: 0 5px;
+.no-video-selected-overlay {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    display: flex;
+    /* HIỆN KHI KHÔNG CÓ VIDEO */
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    background: #f8f9fa;
+    color: #6c757d;
+    text-align: center;
+    padding: 20px;
+    z-index: 5;
 }
 
 /* Debug info */
