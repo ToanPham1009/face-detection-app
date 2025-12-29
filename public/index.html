@@ -146,20 +146,20 @@
                     <button id="startTracking" class="btn btn-success" disabled>🎬 Bắt đầu Theo dõi</button>
                     <button id="stopTracking" class="btn btn-warning" disabled>⏹️ Dừng Theo dõi</button>
                 </div>
-                
-                <!-- Thay thế phần capture-section với cấu trúc rõ ràng hơn -->
+
                 <div class="capture-section">
+                    <div class="capture-controls">
+                        <button id="captureImage" class="btn btn-capture">
+                            📸 Chụp hình hiện tại
+                        </button>
+                    </div>
+
                     <div class="main-camera-section">
                         <div class="camera-container">
                             <canvas id="faceCanvas" width="640" height="480"></canvas>
                             <div class="camera-overlay">
                                 <div class="camera-label">🎥 LIVE CAMERA</div>
                             </div>
-                        </div>
-                        <div class="capture-controls">
-                            <button id="captureImage" class="btn btn-capture">
-                                📸 Chụp hình hiện tại
-                            </button>
                         </div>
                     </div>
 
@@ -220,7 +220,7 @@
                                     📸 Chụp từ video
                                 </button>
                             </div>
-                            
+
                             <div class="video-wrapper">
                                 <video id="playbackVideo" controls playsinline preload="metadata">
                                     <!-- Video sẽ được tải vào đây -->
@@ -235,7 +235,7 @@
                                     <p>Vui lòng chọn một session từ danh sách bên trái</p>
                                 </div>
                             </div>
-                            
+
                             <div id="videoInfo" class="video-info" style="display: none;">
                                 <div class="info-grid">
                                     <div class="info-item">
@@ -264,7 +264,7 @@
                                 <h3>📷 Hình đã chụp trong session</h3>
                                 <div class="captures-count" id="capturesCount">(0 ảnh)</div>
                             </div>
-                            
+
                             <div id="sessionCapturedImages" class="captured-images-grid">
                                 <div class="empty-state">
                                     <div class="empty-icon">📷</div>
@@ -287,7 +287,8 @@
                             <div class="session-info" id="deleteSessionInfo">
                                 <!-- Thông tin session sẽ được điền ở đây -->
                             </div>
-                            <p class="warning-text">⚠️ Hành động này không thể hoàn tác! Video và dữ liệu sẽ bị xóa vĩnh viễn.</p>
+                            <p class="warning-text">⚠️ Hành động này không thể hoàn tác! Video và dữ liệu sẽ bị xóa vĩnh
+                                viễn.</p>
                         </div>
                         <div class="modal-footer">
                             <button id="confirmDelete" class="btn btn-danger">Xác nhận xóa</button>
@@ -641,9 +642,12 @@
 
     <!-- Thêm vào head của file HTML -->
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
-    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/control_utils/control_utils.js" crossorigin="anonymous"></script>
-    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js" crossorigin="anonymous"></script>
-    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/face_detection/face_detection.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/control_utils/control_utils.js"
+        crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js"
+        crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/face_detection/face_detection.js"
+        crossorigin="anonymous"></script>
 
     <script>
         // Chạy sau khi tất cả scripts đã load
