@@ -291,6 +291,9 @@ class FaceDetectionApp {
         const videoInfo = document.getElementById('videoInfo');
         const captureFromVideoBtn = document.getElementById('captureFromVideo');
 
+        // Lưu session hiện tại
+        this.currentSessionId = sessionId;
+
         // Reset trạng thái
         videoPlayer.style.display = 'none';
         videoPlayer.classList.remove('video-error');
@@ -321,45 +324,251 @@ class FaceDetectionApp {
             const session = await response.json();
             console.log('📊 Session data:', session);
 
-            // Kiểm tra xem session có video không
-            if (!session.video_url && !session.video_path && !session.videoUrl) {
+            // Kiểm tra video_filename (Cloudinary URL)
+            if (!session.video_filename) {
                 throw new Error('Session không có video file');
             }
 
-            // Xác định URL video
-            let videoUrl = '';
-            if (session.video_url) {
-                videoUrl = session.video_url;
-            } else if (session.video_path) {
-                videoUrl = session.video_path;
-            } else if (session.videoUrl) {
-                videoUrl = session.videoUrl;
-            }
+            console.log(`📺 Video URL from DB: ${session.video_filename}`);
 
-            console.log(`📺 Video URL: ${videoUrl}`);
+            // HIỂN THỊ LOADING
+            if (noVideoOverlay) noVideoOverlay.style.display = 'none';
+            if (videoLoading) videoLoading.style.display = 'flex';
 
-            // Kiểm tra nếu URL là đường dẫn tương đối
-            if (videoUrl && !videoUrl.startsWith('http') && !videoUrl.startsWith('blob:')) {
-                if (!videoUrl.startsWith('/')) {
-                    videoUrl = '/' + videoUrl;
-                }
-                // Thêm token nếu cần xác thực
-                if (window.authManager?.token) {
-                    videoUrl += `?token=${window.authManager.token}`;
-                }
-            }
-
-            // Đặt poster (thumbnail) nếu có
-            if (session.thumbnail_url || session.thumbnailUrl) {
-                videoPlayer.poster = session.thumbnail_url || session.thumbnailUrl;
-            }
-
-            // Thiết lập event handlers cho video
-            this.setupVideoEventHandlers(videoPlayer, videoUrl, session);
+            // TẢI VIDEO TỪ CLOUDINARY
+            await this.loadCloudinaryVideo(videoPlayer, session.video_filename, session);
 
         } catch (error) {
             console.error('❌ Error loading video:', error);
             this.showVideoError(error.message || 'Không thể tải thông tin session');
+        }
+    }
+
+    async loadVideoWithProxy(videoPlayer, videoUrl, session) {
+        console.log('🔄 Loading video through proxy method');
+
+        const videoLoading = document.getElementById('videoLoading');
+        const isCloudinary = videoUrl.includes('cloudinary.com');
+
+        // Đối với Cloudinary, thử phương pháp đặc biệt
+        if (isCloudinary) {
+            console.log('☁️ Detected Cloudinary video, using optimized loader');
+            await this.loadCloudinaryVideo(videoPlayer, videoUrl, session);
+        } else {
+            // Đối với URL thông thường
+            await this.loadDirectVideo(videoPlayer, videoUrl, session);
+        }
+    }
+
+    async loadCloudinaryVideo(videoPlayer, cloudinaryUrl, session) {
+        console.log('🌩️ Loading Cloudinary video:', cloudinaryUrl);
+
+        const videoLoading = document.getElementById('videoLoading');
+        const noVideoOverlay = document.getElementById('noVideoOverlay');
+
+        try {
+            // 1. KIỂM TRA URL CLOUDINARY
+            if (!cloudinaryUrl.includes('cloudinary.com')) {
+                throw new Error('URL video không phải từ Cloudinary');
+            }
+
+            // 2. CHUẨN BỊ VIDEO PLAYER
+            videoPlayer.style.display = 'none';
+            videoPlayer.crossOrigin = 'anonymous'; // Quan trọng cho CORS
+
+            // 3. XỬ LÝ URL CLOUDINARY
+            let videoUrl = cloudinaryUrl;
+
+            // Đảm bảo URL có định dạng đúng cho video player
+            if (!videoUrl.includes('/upload/')) {
+                console.error('⚠️ Cloudinary URL không đúng định dạng:', videoUrl);
+                // Cố gắng sửa URL
+                const match = videoUrl.match(/\/v\d+\/(.+)/);
+                if (match) {
+                    const publicId = match[1];
+                    videoUrl = `https://res.cloudinary.com/${process.env.CLOUDINARY_CLOUD_NAME}/video/upload/${publicId}`;
+                    console.log('🔄 Fixed Cloudinary URL:', videoUrl);
+                }
+            }
+
+            // Thêm timestamp để tránh cache
+            const separator = videoUrl.includes('?') ? '&' : '?';
+            videoUrl = `${videoUrl}${separator}_t=${Date.now()}`;
+
+            console.log('🔗 Final video URL:', videoUrl);
+
+            // 4. THIẾT LẬP EVENT HANDLERS
+            this.setupVideoHandlers(videoPlayer, session);
+
+            // 5. ĐẶT SRC VÀ LOAD
+            videoPlayer.src = videoUrl;
+            videoPlayer.load();
+
+        } catch (error) {
+            console.error('❌ Cloudinary video error:', error);
+
+            // Hiển thị lỗi với URL để debug
+            if (noVideoOverlay) {
+                noVideoOverlay.innerHTML = `
+                <div class="empty-icon">❌</div>
+                <h4>Lỗi tải video Cloudinary</h4>
+                <p>${error.message}</p>
+                <div class="debug-info">
+                    <small><strong>URL:</strong> ${cloudinaryUrl}</small>
+                </div>
+                <div class="error-actions">
+                    <button onclick="window.open('${cloudinaryUrl}', '_blank')" class="btn btn-sm btn-info">
+                        🌐 Mở trong tab mới
+                    </button>
+                </div>
+            `;
+                noVideoOverlay.style.display = 'flex';
+            }
+
+            if (videoLoading) videoLoading.style.display = 'none';
+        }
+    }
+
+    setupVideoHandlers(videoPlayer, session) {
+        const videoLoading = document.getElementById('videoLoading');
+        const noVideoOverlay = document.getElementById('noVideoOverlay');
+        const videoInfo = document.getElementById('videoInfo');
+        const captureFromVideoBtn = document.getElementById('captureFromVideo');
+
+        // Xóa event listeners cũ
+        const newVideo = videoPlayer.cloneNode();
+        videoPlayer.parentNode.replaceChild(newVideo, videoPlayer);
+        const freshVideo = newVideo;
+        freshVideo.id = 'playbackVideo';
+
+        let hasMetadataLoaded = false;
+
+        // LOADED METADATA - Video đã sẵn sàng
+        freshVideo.onloadedmetadata = () => {
+            console.log('✅ Video metadata loaded');
+            console.log(`⏱️ Duration: ${freshVideo.duration}s`);
+            console.log(`📏 Dimensions: ${freshVideo.videoWidth}x${freshVideo.videoHeight}`);
+
+            hasMetadataLoaded = true;
+            if (videoLoading) videoLoading.style.display = 'none';
+            freshVideo.style.display = 'block';
+
+            // Hiển thị thông tin video
+            if (videoInfo) {
+                videoInfo.innerHTML = `
+                <div class="info-grid">
+                    <div class="info-item">
+                        <span class="info-label">📅 Ngày tạo:</span>
+                        <span class="info-value">${this.formatDate(session.created_at || session.start_time)}</span>
+                    </div>
+                    <div class="info-item">
+                        <span class="info-label">⏱️ Thời lượng:</span>
+                        <span class="info-value">${Math.round(freshVideo.duration)}s</span>
+                    </div>
+                    <div class="info-item">
+                        <span class="info-label">👤 Số khuôn mặt:</span>
+                        <span class="info-value">${session.total_faces || session.face_count || 0}</span>
+                    </div>
+                    <div class="info-item">
+                        <span class="info-label">💾 Nguồn:</span>
+                        <span class="info-value">Cloudinary</span>
+                    </div>
+                </div>
+            `;
+                videoInfo.style.display = 'block';
+            }
+
+            if (captureFromVideoBtn) captureFromVideoBtn.disabled = false;
+
+            // Load hình ảnh đã chụp
+            this.loadSessionImages(session.id);
+        };
+
+        // CAN PLAY - Có thể bắt đầu phát
+        freshVideo.oncanplay = () => {
+            console.log('▶️ Video ready to play');
+            if (videoLoading) videoLoading.style.display = 'none';
+
+            // Thử phát tự động (muted để vượt qua autoplay policy)
+            freshVideo.muted = true;
+            freshVideo.play().catch(e => {
+                console.log('ℹ️ Auto-play blocked, user interaction required');
+            });
+        };
+
+        // ERROR - Xử lý lỗi
+        freshVideo.onerror = (e) => {
+            console.error('❌ Video error event:', e);
+            console.error('Video error details:', freshVideo.error);
+
+            if (videoLoading) videoLoading.style.display = 'none';
+
+            let errorMsg = 'Lỗi tải video từ Cloudinary';
+            if (freshVideo.error) {
+                switch (freshVideo.error.code) {
+                    case 1: errorMsg = 'MEDIA_ERR_ABORTED: Tải video bị hủy'; break;
+                    case 2: errorMsg = 'MEDIA_ERR_NETWORK: Lỗi mạng'; break;
+                    case 3: errorMsg = 'MEDIA_ERR_DECODE: Không thể giải mã video'; break;
+                    case 4: errorMsg = 'MEDIA_ERR_SRC_NOT_SUPPORTED: Định dạng video không được hỗ trợ'; break;
+                }
+            }
+
+            this.showVideoError(errorMsg, freshVideo.src);
+        };
+
+        // WAITING/STALLED - Đang buffer
+        freshVideo.onwaiting = freshVideo.onstalled = () => {
+            console.log('⏳ Video buffering...');
+            if (!hasMetadataLoaded && videoLoading) {
+                videoLoading.style.display = 'flex';
+            }
+        };
+
+        // PLAYING - Đang phát
+        freshVideo.onplaying = () => {
+            console.log('🎬 Video playing');
+            if (videoLoading) videoLoading.style.display = 'none';
+        };
+
+        return freshVideo;
+    }
+
+    // Thêm hàm utility để hiển thị video thông thường
+    async loadDirectVideo(videoPlayer, videoUrl, session) {
+        console.log('🔗 Loading direct video');
+
+        const videoLoading = document.getElementById('videoLoading');
+
+        try {
+            videoPlayer.crossOrigin = 'anonymous';
+            videoPlayer.preload = 'metadata';
+
+            // Đặt src với timestamp
+            const timestamp = Date.now();
+            const separator = videoUrl.includes('?') ? '&' : '?';
+            videoPlayer.src = `${videoUrl}${separator}_t=${timestamp}`;
+
+            // Thiết lập event handlers đơn giản
+            const onLoaded = () => {
+                console.log('✅ Direct video loaded');
+                if (videoLoading) videoLoading.style.display = 'none';
+                videoPlayer.style.display = 'block';
+                this.displayVideoInfo(session, videoPlayer);
+            };
+
+            const onError = () => {
+                console.error('❌ Direct video error');
+                this.showVideoError('Không thể tải video trực tiếp');
+            };
+
+            videoPlayer.addEventListener('loadedmetadata', onLoaded, { once: true });
+            videoPlayer.addEventListener('error', onError, { once: true });
+
+            videoPlayer.load();
+
+        } catch (error) {
+            console.error('❌ Direct load error:', error);
+            this.showVideoError('Lỗi khi tải video trực tiếp');
         }
     }
 
@@ -526,42 +735,6 @@ class FaceDetectionApp {
         container.innerHTML = imagesHTML;
     }
 
-    // Thêm hàm mới để load metadata
-    async loadVideoMetadata(videoPlayer, session) {
-        return new Promise((resolve, reject) => {
-            const onLoadedMetadata = () => {
-                console.log('✅ Video metadata loaded');
-                videoPlayer.removeEventListener('loadedmetadata', onLoadedMetadata);
-                videoPlayer.removeEventListener('error', onError);
-                resolve();
-            };
-
-            const onError = (error) => {
-                console.error('❌ Video metadata error:', error);
-                videoPlayer.removeEventListener('loadedmetadata', onLoadedMetadata);
-                videoPlayer.removeEventListener('error', onError);
-
-                // Nếu không load được metadata, vẫn hiển thị thông tin từ session
-                console.warn('⚠️ Using session data instead of metadata');
-                resolve();
-            };
-
-            videoPlayer.addEventListener('loadedmetadata', onLoadedMetadata);
-            videoPlayer.addEventListener('error', onError);
-
-            // Timeout sau 10 giây
-            setTimeout(() => {
-                videoPlayer.removeEventListener('loadedmetadata', onLoadedMetadata);
-                videoPlayer.removeEventListener('error', onError);
-                console.warn('⚠️ Video metadata loading timeout');
-                resolve();
-            }, 10000);
-
-            // Load video
-            videoPlayer.load();
-        });
-    }
-
     displayVideoInfo(session, videoPlayer = null) {
         const videoInfo = document.getElementById('videoInfo');
         const captureFromVideoBtn = document.getElementById('captureFromVideo');
@@ -602,14 +775,18 @@ class FaceDetectionApp {
 
     formatDate(dateString) {
         if (!dateString) return '--/--/----';
-        const date = new Date(dateString);
-        return date.toLocaleDateString('vi-VN', {
-            day: '2-digit',
-            month: '2-digit',
-            year: 'numeric',
-            hour: '2-digit',
-            minute: '2-digit'
-        });
+        try {
+            const date = new Date(dateString);
+            return date.toLocaleDateString('vi-VN', {
+                day: '2-digit',
+                month: '2-digit',
+                year: 'numeric',
+                hour: '2-digit',
+                minute: '2-digit'
+            });
+        } catch (e) {
+            return dateString;
+        }
     }
 
     formatFileSize(bytes) {
@@ -1805,7 +1982,7 @@ class FaceDetectionApp {
     }
 
 
-    showVideoError(message) {
+    showVideoError(message, videoUrl = '') {
         console.error('❌ Video error:', message);
 
         const videoPlayer = document.getElementById('playbackVideo');
@@ -1826,29 +2003,62 @@ class FaceDetectionApp {
             <div class="empty-icon">❌</div>
             <h4>Không thể phát video</h4>
             <p>${message}</p>
+            
+            ${videoUrl ? `
+            <div class="debug-info">
+                <small><strong>URL đang thử:</strong></small>
+                <div class="url-preview">${videoUrl.substring(0, 100)}...</div>
+            </div>
+            ` : ''}
+            
             <div class="error-actions">
                 <button onclick="window.faceDetectionApp?.retryVideoLoad()" class="btn btn-sm btn-primary">
                     🔄 Thử lại
                 </button>
-                <button onclick="window.open('${videoPlayer.src || ''}', '_blank')" class="btn btn-sm btn-secondary">
+                
+                ${videoUrl ? `
+                <button onclick="window.open('${videoUrl}', '_blank')" class="btn btn-sm btn-info">
                     🌐 Mở trong tab mới
                 </button>
+                
+                <button onclick="window.faceDetectionApp?.downloadVideo('${videoUrl}')" class="btn btn-sm btn-warning">
+                    ⬇️ Tải xuống
+                </button>
+                ` : ''}
+            </div>
+            
+            <div class="tech-tips">
+                <small><strong>Mẹo khắc phục:</strong></small>
+                <ul>
+                    <li>Video có thể bị chặn bởi chính sách CORS của Cloudinary</li>
+                    <li>Thử mở trong tab mới để kiểm tra</li>
+                    <li>Kiểm tra console log để xem chi tiết lỗi</li>
+                </ul>
             </div>
         `;
             noVideoOverlay.style.display = 'flex';
         }
-
-        // Thêm class error cho video player
-        videoPlayer.classList.add('video-error');
     }
 
-    // Thêm hàm retry
     retryVideoLoad() {
         if (this.currentSessionId) {
-            console.log('🔄 Retrying video load for session:', this.currentSessionId);
+            console.log('🔄 Retrying video load...');
             this.loadSessionVideo(this.currentSessionId);
         }
     }
+
+    downloadVideo(videoUrl) {
+        if (!videoUrl) return;
+
+        const link = document.createElement('a');
+        link.href = videoUrl;
+        link.download = `video-${this.currentSessionId || 'session'}.mp4`;
+        link.target = '_blank';
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+    }
+
 
     // Thêm phương thức để xóa event listeners cũ
     removeVideoEventListeners(videoPlayer) {
