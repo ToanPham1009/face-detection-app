@@ -658,56 +658,140 @@ class FaceDetectionApp {
     }
 
     setupVideoEventHandlers(videoPlayer, session) {
+        console.log('🎧 Setting up video event handlers...');
+
         const videoLoading = document.getElementById('videoLoading');
         const noVideoOverlay = document.getElementById('noVideoOverlay');
+        const videoInfo = document.getElementById('videoInfo');
 
-        // ẨN OVERLAY KHI VIDEO LOADED
-        videoPlayer.addEventListener('loadedmetadata', () => {
+        // QUAN TRỌNG: Reset overlay trạng thái
+        if (videoLoading) {
+            videoLoading.style.display = 'flex'; // Hiện loading khi bắt đầu
+        }
+        if (noVideoOverlay) {
+            noVideoOverlay.style.display = 'none'; // Ẩn no-video overlay
+        }
+
+        // Xóa event listeners cũ nếu có
+        const newVideo = videoPlayer.cloneNode(true);
+        videoPlayer.parentNode.replaceChild(newVideo, videoPlayer);
+        const freshVideo = newVideo;
+        freshVideo.id = 'playbackVideo';
+
+        // 1. LOADED METADATA - Khi video đã load xong metadata
+        freshVideo.addEventListener('loadedmetadata', () => {
             console.log('✅ Video metadata loaded');
+            console.log(`⏱️ Duration: ${freshVideo.duration}s`);
 
-            // QUAN TRỌNG: Ẩn loading overlay
+            // ẨN LOADING OVERLAY - QUAN TRỌNG!
             if (videoLoading) {
                 videoLoading.style.display = 'none';
             }
 
-            // Ẩn no-video overlay
-            if (noVideoOverlay) {
-                noVideoOverlay.style.display = 'none';
+            // Hiển thị video
+            freshVideo.style.display = 'block';
+
+            // Hiển thị thông tin video
+            if (videoInfo) {
+                videoInfo.innerHTML = `
+                <div class="info-grid">
+                    <div class="info-item">
+                        <span class="info-label">📅 Ngày tạo:</span>
+                        <span class="info-value">${this.formatDate(session.start_time)}</span>
+                    </div>
+                    <div class="info-item">
+                        <span class="info-label">⏱️ Thời lượng:</span>
+                        <span class="info-value">${Math.round(freshVideo.duration)}s</span>
+                    </div>
+                    <div class="info-item">
+                        <span class="info-label">👤 Số khuôn mặt:</span>
+                        <span class="info-value">${session.total_faces || 0}</span>
+                    </div>
+                    <div class="info-item">
+                        <span class="info-label">💾 Nguồn:</span>
+                        <span class="info-value">Cloudinary</span>
+                    </div>
+                </div>
+            `;
+                videoInfo.style.display = 'block';
             }
 
-            // Hiển thị video
-            videoPlayer.style.display = 'block';
-            this.displayVideoInfo(session, videoPlayer);
         }, { once: true });
 
-        videoPlayer.addEventListener('canplay', () => {
+        // 2. CAN PLAY - Khi video có thể phát được
+        freshVideo.addEventListener('canplay', () => {
             console.log('▶️ Video ready to play');
 
-            // Đảm bảo overlay ẩn
-            if (videoLoading) videoLoading.style.display = 'none';
-            if (noVideoOverlay) noVideoOverlay.style.display = 'none';
+            // Đảm bảo loading overlay đã ẩn
+            if (videoLoading) {
+                videoLoading.style.display = 'none';
+            }
 
-            // Auto-play
-            videoPlayer.muted = true;
-            videoPlayer.play().catch(e => {
-                console.log('ℹ️ Auto-play prevented');
+            // Thử phát tự động (muted để vượt qua autoplay policy)
+            freshVideo.muted = true;
+            freshVideo.play().catch(e => {
+                console.log('ℹ️ Auto-play blocked, waiting for user interaction');
             });
+
         }, { once: true });
 
-        videoPlayer.addEventListener('error', (e) => {
-            console.error('❌ Video error');
+        // 3. ERROR - Xử lý lỗi
+        freshVideo.addEventListener('error', (e) => {
+            console.error('❌ Video error event:', e);
+            console.error('Video error details:', freshVideo.error);
 
-            // Ẩn loading, hiện error
-            if (videoLoading) videoLoading.style.display = 'none';
+            // Ẩn loading, hiển thị lỗi
+            if (videoLoading) {
+                videoLoading.style.display = 'none';
+            }
+
             if (noVideoOverlay) {
                 noVideoOverlay.innerHTML = `
                 <div class="empty-icon">❌</div>
                 <h4>Lỗi video</h4>
-                <p>Không thể phát video</p>
+                <p>Không thể tải video</p>
+                <small>Mã lỗi: ${freshVideo.error?.code || 'unknown'}</small>
             `;
                 noVideoOverlay.style.display = 'flex';
             }
+
         }, { once: true });
+
+        // 4. PLAYING - Khi video bắt đầu phát
+        freshVideo.addEventListener('playing', () => {
+            console.log('🎬 Video playing');
+
+            // Đảm bảo loading đã ẩn
+            if (videoLoading) {
+                videoLoading.style.display = 'none';
+            }
+
+        }, { once: true });
+
+        // 5. WAITING/STALLED - Đang buffer
+        freshVideo.addEventListener('waiting', () => {
+            console.log('⏳ Video buffering...');
+            if (videoLoading) {
+                videoLoading.style.display = 'flex';
+            }
+        });
+
+        freshVideo.addEventListener('stalled', () => {
+            console.log('⏳ Video stalled...');
+            if (videoLoading) {
+                videoLoading.style.display = 'flex';
+            }
+        });
+
+        // 6. LOAD START - Bắt đầu tải
+        freshVideo.addEventListener('loadstart', () => {
+            console.log('📥 Video loading started');
+            if (videoLoading) {
+                videoLoading.style.display = 'flex';
+            }
+        }, { once: true });
+
+        return freshVideo;
     }
 
     async loadSessionImages(sessionId) {
@@ -1952,44 +2036,50 @@ class FaceDetectionApp {
         return overlay;
     }
 
-    setupVideoEventListeners(videoPlayer, session, videoInfo) {
+    setupVideoEventListeners(videoPlayer, session, videoInfo, loadingOverlay) {
         if (!videoPlayer || !videoInfo) return;
 
         console.log('🎧 Setting up video event listeners...');
 
-        // Lưu reference đến this để dùng trong event handlers
-        const app = this;
-
         // Xử lý khi video bắt đầu load
         videoPlayer.onloadstart = () => {
             console.log('📥 Video loading started');
-            app.updateVideoStatus('Đang tải video...', 'loading', videoInfo);
+            this.updateVideoStatus('Đang tải video...', 'loading', videoInfo);
         };
 
         // Xử lý khi có đủ dữ liệu để phát
         videoPlayer.onloadeddata = () => {
             console.log('✅ Video data loaded');
-            app.updateVideoStatus('Đã tải xong', 'loaded', videoInfo);
+            this.updateVideoStatus('Đã tải xong', 'loaded', videoInfo);
+
+            // QUAN TRỌNG: Ẩn loading overlay
+            if (loadingOverlay) {
+                loadingOverlay.style.display = 'none';
+            }
 
             // Cập nhật thông tin chi tiết
-            videoInfo.innerHTML = app.createVideoInfoHTML(session, videoPlayer.src);
+            videoInfo.innerHTML = this.createVideoInfoHTML(session, videoPlayer.src);
         };
 
         // Xử lý khi video bắt đầu phát
         videoPlayer.onplaying = () => {
             console.log('▶️ Video is now playing');
-            app.updateVideoStatus('Đang phát', 'playing', videoInfo);
-        };
+            this.updateVideoStatus('Đang phát', 'playing', videoInfo);
 
-        // Xử lý khi video dừng
-        videoPlayer.onpause = () => {
-            console.log('⏸️ Video paused');
-            app.updateVideoStatus('Đang dừng', 'paused', videoInfo);
+            // Đảm bảo loading overlay đã ẩn
+            if (loadingOverlay) {
+                loadingOverlay.style.display = 'none';
+            }
         };
 
         // Xử lý lỗi
         videoPlayer.onerror = (e) => {
             console.error('❌ Video error:', videoPlayer.error);
+
+            // QUAN TRỌNG: Ẩn loading overlay khi có lỗi
+            if (loadingOverlay) {
+                loadingOverlay.style.display = 'none';
+            }
 
             let errorMessage = 'Không thể phát video';
             if (videoPlayer.error) {
@@ -2001,14 +2091,8 @@ class FaceDetectionApp {
                 }
             }
 
-            app.updateVideoStatus('Lỗi: ' + errorMessage, 'error', videoInfo);
-            app.showVideoError(new Error(errorMessage), session);
-        };
-
-        // Xử lý khi video kết thúc
-        videoPlayer.onended = () => {
-            console.log('🏁 Video ended');
-            app.updateVideoStatus('Đã kết thúc', 'ended', videoInfo);
+            this.updateVideoStatus('Lỗi: ' + errorMessage, 'error', videoInfo);
+            this.showVideoError(new Error(errorMessage), session);
         };
     }
 
