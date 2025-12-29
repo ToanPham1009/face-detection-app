@@ -843,10 +843,11 @@ h1 {
 
 .video-wrapper {
     position: relative;
+    width: 100%;
+    height: 400px;
     background: #000;
     border-radius: 8px;
     overflow: hidden;
-    min-height: 300px;
 }
 
 .video-wrapper video {
@@ -896,12 +897,19 @@ h1 {
     height: 100%;
     object-fit: contain;
     background: #000;
-    display: block !important;
-    z-index: 1;
+    display: block;
     position: relative;
-    /* Cần position để z-index hoạt động */
+    z-index: 1;
 }
 
+/* Overlay styles - QUAN TRỌNG: Mặc định ẩn */
+#videoLoading {
+    display: none;
+}
+
+#noVideoOverlay {
+    display: none;
+}
 
 .video-wrapper.active #playbackVideo {
     display: block;
@@ -2589,7 +2597,6 @@ h1 {
     right: 0;
     bottom: 0;
     display: none;
-    /* MẶC ĐỊNH ẨN */
     flex-direction: column;
     justify-content: center;
     align-items: center;
@@ -3197,8 +3204,7 @@ h1 {
     left: 0;
     right: 0;
     bottom: 0;
-    display: flex;
-    /* HIỆN KHI KHÔNG CÓ VIDEO */
+    display: none;
     flex-direction: column;
     justify-content: center;
     align-items: center;
@@ -3348,6 +3354,7 @@ h1 {
     animation: spin 1s linear infinite;
     margin-bottom: 15px;
 }
+
 
 /* Video details styles */
 .video-details {
