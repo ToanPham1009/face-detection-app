@@ -3142,6 +3142,37 @@ h1 {
     color: #ed8936;
 }
 
+/* Thêm vào style.css */
+.video-error {
+    display: none !important;
+}
+
+.error-actions {
+    margin-top: 15px;
+    display: flex;
+    gap: 10px;
+    justify-content: center;
+}
+
+.no-video-selected-overlay .btn-sm {
+    padding: 6px 12px;
+    font-size: 12px;
+    margin: 0 5px;
+}
+
+/* Debug info */
+.video-debug {
+    position: absolute;
+    bottom: 10px;
+    left: 10px;
+    background: rgba(0, 0, 0, 0.7);
+    color: white;
+    padding: 5px 10px;
+    border-radius: 4px;
+    font-size: 11px;
+    z-index: 20;
+}
+
 /* Empty state styles */
 .empty-state {
     grid-column: 1 / -1;
