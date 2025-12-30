@@ -158,6 +158,9 @@
 
                     <div class="main-camera-section">
                         <div class="camera-container">
+                            <div id="modeIndicator" class="mode-indicator camera-mode">
+                                📱 Chế độ Camera
+                            </div>
                             <canvas id="faceCanvas" width="640" height="480"></canvas>
                             <div class="camera-overlay">
                                 <div class="camera-label">🎥 LIVE CAMERA</div>
@@ -224,9 +227,13 @@
                             </div>
 
                             <div class="video-wrapper">
-                                <video id="playbackVideo" controls playsinline preload="metadata">
-                                    <!-- Video sẽ được tải vào đây -->
+                                <video id="playbackVideo" controls style="display: none;">
+                                    <div id="videoModeIndicator" class="mode-indicator video-mode"
+                                        style="display: none;">
+                                        🎬 Chế độ Video
+                                    </div>
                                 </video>
+
                                 <div class="video-loading-overlay" id="videoLoading" style="display: none;">
                                     <div class="spinner"></div>
                                     <p>Đang tải video...</p>

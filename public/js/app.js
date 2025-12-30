@@ -15,8 +15,13 @@ class FaceDetectionApp {
         // KHỞI TẠO VOICE CONTROL
         this.voiceControl = null;
 
-        // KHÔNG gọi initialize() ở đây nữa
-        // Thay vào đó, đợi DOM sẵn sàng
+        // Khởi tạo sự kiện chụp hình
+        this.initCaptureEvents();
+
+        // Biến theo dõi
+        this.handleCaptureClick = null;
+        this.isCapturing = false;
+
         if (document.readyState === 'loading') {
             document.addEventListener('DOMContentLoaded', () => this.initialize());
         } else {
@@ -1094,8 +1099,6 @@ class FaceDetectionApp {
         }
     }
 
-
-
     // Phương thức chụp từ camera live
     async captureFromCamera() {
         try {
@@ -1109,6 +1112,14 @@ class FaceDetectionApp {
                 throw new Error('Canvas not found');
             }
 
+            console.log('📱 Capturing from camera...');
+
+            // Kiểm tra canvas có dữ liệu không
+            if (canvas.width === 0 || canvas.height === 0) {
+                this.showNotification('📷 Camera chưa sẵn sàng', 'warning');
+                return;
+            }
+
             // Tạo canvas tạm để chụp
             const tempCanvas = document.createElement('canvas');
             tempCanvas.width = canvas.width;
@@ -1118,12 +1129,44 @@ class FaceDetectionApp {
             // Vẽ nội dung từ canvas chính
             tempCtx.drawImage(canvas, 0, 0);
 
-            // Chuyển sang blob và lưu
-            tempCanvas.toBlob(async (blob) => {
-                const imageData = await this.saveCapturedImage(blob, 'camera');
-                this.addCapturedImageToUI(imageData, 'live');
-                this.showNotification('📸 Đã chụp hình từ camera!', 'success');
-            }, 'image/jpeg', 0.9);
+            // Kiểm tra canvas có dữ liệu không
+            const imageData = tempCtx.getImageData(0, 0, 1, 1).data;
+            if (imageData[3] === 0) {
+                this.showNotification('📷 Không có hình ảnh để chụp', 'warning');
+                return;
+            }
+
+            // Thêm timestamp và thông tin
+            tempCtx.fillStyle = 'rgba(0, 0, 0, 0.7)';
+            tempCtx.fillRect(10, tempCanvas.height - 40, 300, 30);
+            tempCtx.fillStyle = 'white';
+            tempCtx.font = '14px Arial';
+
+            const timeString = new Date().toLocaleTimeString('vi-VN');
+            const faceCount = this.faceDetector?.currentFaceCount || 0;
+            tempCtx.fillText(`📱 Camera | ⏰ ${timeString} | 👤 ${faceCount} faces`, 15, tempCanvas.height - 20);
+
+            // Tạo blob từ canvas
+            const blob = await new Promise((resolve) => {
+                tempCanvas.toBlob((blobResult) => {
+                    resolve(blobResult);
+                }, 'image/jpeg', 0.9);
+            });
+
+            if (!blob) {
+                throw new Error('Failed to create image blob');
+            }
+
+            // Lưu hình ảnh
+            const imageDataResult = await this.saveCapturedImage(blob, 'camera');
+
+            // Thêm vào UI
+            this.addCapturedImageToUI(imageDataResult, 'live');
+
+            // Hiển thị thông báo
+            this.showNotification('📸 Đã chụp hình từ camera!', 'success');
+
+            console.log('✅ Camera capture successful');
 
         } catch (error) {
             console.error('❌ Error capturing image:', error);
@@ -1135,47 +1178,156 @@ class FaceDetectionApp {
     async captureFromVideoPlayer() {
         try {
             const videoPlayer = document.getElementById('playbackVideo');
-            if (!videoPlayer || videoPlayer.style.display === 'none') {
+
+            // Kiểm tra kỹ hơn
+            if (!videoPlayer) {
+                this.showNotification('📹 Không tìm thấy trình phát video', 'warning');
+                return;
+            }
+
+            const isVideoVisible = window.getComputedStyle(videoPlayer).display !== 'none';
+            if (!isVideoVisible) {
                 this.showNotification('📹 Vui lòng chọn và phát video trước', 'warning');
                 return;
             }
 
-            if (videoPlayer.paused) {
+            if (videoPlayer.paused || videoPlayer.ended) {
                 this.showNotification('⏸️ Video đang dừng. Vui lòng phát video để chụp', 'warning');
                 return;
             }
 
+            // Kiểm tra video có kích thước hợp lệ không
+            if (videoPlayer.videoWidth === 0 || videoPlayer.videoHeight === 0) {
+                this.showNotification('📹 Video chưa sẵn sàng, vui lòng đợi...', 'warning');
+                return;
+            }
+
+            console.log('🎬 Capturing from video...');
+            console.log('Video dimensions:', videoPlayer.videoWidth, 'x', videoPlayer.videoHeight);
+
             // Tạo canvas để chụp frame từ video
             const canvas = document.createElement('canvas');
-            canvas.width = videoPlayer.videoWidth || 640;
-            canvas.height = videoPlayer.videoHeight || 480;
+            canvas.width = videoPlayer.videoWidth;
+            canvas.height = videoPlayer.videoHeight;
             const ctx = canvas.getContext('2d');
 
             // Vẽ frame hiện tại của video
             ctx.drawImage(videoPlayer, 0, 0, canvas.width, canvas.height);
 
-            // Thêm timestamp lên ảnh
+            // Kiểm tra canvas có dữ liệu không
+            const imageData = ctx.getImageData(0, 0, 1, 1).data;
+            if (imageData[3] === 0) {
+                this.showNotification('📹 Không thể chụp frame từ video', 'warning');
+                return;
+            }
+
+            // Thêm timestamp và thông tin
             ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
-            ctx.fillRect(10, canvas.height - 40, 200, 30);
+            ctx.fillRect(10, canvas.height - 60, 350, 50);
             ctx.fillStyle = 'white';
             ctx.font = '14px Arial';
 
             const currentTime = this.formatVideoTime(videoPlayer.currentTime);
-            ctx.fillText(`⏱️ ${currentTime}`, 15, canvas.height - 20);
+            const duration = this.formatVideoTime(videoPlayer.duration);
+            const progress = ((videoPlayer.currentTime / videoPlayer.duration) * 100).toFixed(1);
 
-            // Chuyển sang blob và lưu
-            canvas.toBlob(async (blob) => {
-                const imageData = await this.saveCapturedImage(blob, 'video', {
-                    videoTime: videoPlayer.currentTime,
-                    sessionId: this.currentSessionId
-                });
-                this.addCapturedImageToUI(imageData, 'session');
-                this.showNotification('📸 Đã chụp hình từ video!', 'success');
-            }, 'image/jpeg', 0.9);
+            ctx.fillText(`🎬 Video | ⏱️ ${currentTime} / ${duration} (${progress}%)`, 15, canvas.height - 40);
+            ctx.fillText(`📅 ${this.currentSessionId || 'Session'}`, 15, canvas.height - 20);
+
+            // Tạo blob từ canvas
+            const blob = await new Promise((resolve) => {
+                canvas.toBlob((blobResult) => {
+                    resolve(blobResult);
+                }, 'image/jpeg', 0.9);
+            });
+
+            if (!blob) {
+                throw new Error('Failed to create image blob from video');
+            }
+
+            // Lưu hình ảnh với metadata
+            const metadata = {
+                videoTime: videoPlayer.currentTime,
+                videoDuration: videoPlayer.duration,
+                sessionId: this.currentSessionId,
+                progress: progress
+            };
+
+            const imageDataResult = await this.saveCapturedImage(blob, 'video', metadata);
+
+            // Thêm vào UI
+            this.addCapturedImageToUI(imageDataResult, 'session');
+
+            // Hiển thị thông báo
+            this.showNotification('📸 Đã chụp hình từ video!', 'success');
+
+            console.log('✅ Video capture successful');
 
         } catch (error) {
             console.error('❌ Error capturing from video:', error);
             this.showNotification('❌ Lỗi khi chụp từ video: ' + error.message, 'error');
+        }
+    }
+
+    // Thêm phương thức để xác định đang ở chế độ nào
+    getCurrentMode() {
+        const videoPlayer = document.getElementById('playbackVideo');
+        const cameraCanvas = document.getElementById('faceCanvas');
+
+        // Kiểm tra video có đang hiển thị không
+        if (videoPlayer && window.getComputedStyle(videoPlayer).display !== 'none') {
+            return 'video';
+        }
+
+        // Kiểm tra camera có đang hoạt động không
+        if (cameraCanvas && this.faceDetector?.isCameraOn) {
+            return 'camera';
+        }
+
+        return 'none';
+    }
+
+    // Phương thức format thời gian video
+    formatVideoTime(seconds) {
+        if (!seconds || isNaN(seconds)) return '00:00';
+
+        const mins = Math.floor(seconds / 60);
+        const secs = Math.floor(seconds % 60);
+        return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+    }
+
+    // Trong constructor hoặc init()
+    initCaptureEvents() {
+        const captureButton = document.getElementById('captureImage');
+        if (captureButton) {
+            // Xóa event listener cũ nếu có
+            captureButton.removeEventListener('click', this.handleCaptureClick);
+
+            // Thêm event listener mới
+            this.handleCaptureClick = this.handleCaptureClick.bind(this);
+            captureButton.addEventListener('click', this.handleCaptureClick);
+
+            console.log('✅ Capture button event initialized');
+        }
+    }
+
+    // Phương thức xử lý click nút chụp
+    handleCaptureClick() {
+        console.log('📸 Capture button clicked');
+
+        // Kiểm tra đang ở chế độ nào
+        const videoPlayer = document.getElementById('playbackVideo');
+        const isVideoMode = videoPlayer && videoPlayer.style.display !== 'none';
+
+        console.log('Video mode:', isVideoMode);
+        console.log('Video playing:', videoPlayer?.paused === false);
+
+        if (isVideoMode) {
+            // Đang xem video
+            this.captureFromVideoPlayer();
+        } else {
+            // Đang xem camera live
+            this.captureFromCamera();
         }
     }
 

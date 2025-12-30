@@ -2307,12 +2307,14 @@ h1 {
     display: flex;
     justify-content: center;
     width: 100%;
-    order: 1; /* Đặt ở vị trí đầu tiên */
+    order: 1;
+    /* Đặt ở vị trí đầu tiên */
 }
 
 /* Camera section styles */
 .main-camera-section {
-    order: 2; /* Vị trí thứ hai */
+    order: 2;
+    /* Vị trí thứ hai */
     display: flex;
     flex: 2;
 }
@@ -2450,6 +2452,26 @@ h1 {
     margin-top: 2px;
 }
 
+/* Thêm indicator cho chế độ hiện tại */
+.mode-indicator {
+    position: absolute;
+    top: 10px;
+    left: 10px;
+    background: rgba(0, 0, 0, 0.7);
+    color: white;
+    padding: 5px 10px;
+    border-radius: 5px;
+    font-size: 12px;
+    z-index: 10;
+}
+
+.camera-mode {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+}
+
+.video-mode {
+    background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+}
 
 /* Session captures section */
 .session-captures {
