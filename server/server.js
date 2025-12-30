@@ -203,6 +203,74 @@ app.delete('/api/sessions/:sessionId', async (req, res) => {
   }
 });
 
+// Backend API routes cho captures
+app.post('/api/captures/save', async (req, res) => {
+  try {
+    const captureData = req.body;
+
+    // Lưu vào database
+    const query = `
+            INSERT INTO captures 
+            (id, url, filename, timestamp, source, session_id, metadata, created_at, is_local)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ON DUPLICATE KEY UPDATE
+            url = VALUES(url), metadata = VALUES(metadata)
+        `;
+
+    const result = await db.query(query, [
+      captureData.id,
+      captureData.url,
+      captureData.filename,
+      captureData.timestamp,
+      captureData.source,
+      captureData.sessionId,
+      JSON.stringify(captureData.metadata || {}),
+      captureData.created_at,
+      captureData.isLocal || false
+    ]);
+
+    res.json({
+      success: true,
+      id: captureData.id,
+      message: 'Capture saved successfully'
+    });
+
+  } catch (error) {
+    console.error('Error saving capture:', error);
+    res.status(500).json({ error: 'Failed to save capture' });
+  }
+});
+
+app.get('/api/captures/session/:sessionId', async (req, res) => {
+  try {
+    const sessionId = req.params.sessionId;
+
+    const query = `
+            SELECT * FROM captures 
+            WHERE session_id = ? 
+            ORDER BY timestamp DESC
+        `;
+
+    const captures = await db.query(query, [sessionId]);
+
+    // Parse metadata từ JSON string
+    captures.forEach(capture => {
+      if (capture.metadata) {
+        try {
+          capture.metadata = JSON.parse(capture.metadata);
+        } catch (e) {
+          capture.metadata = {};
+        }
+      }
+    });
+
+    res.json(captures);
+
+  } catch (error) {
+    console.error('Error loading captures:', error);
+    res.status(500).json({ error: 'Failed to load captures' });
+  }
+});
 
 // Serve frontend (SPA)
 app.get('*', (req, res) => {

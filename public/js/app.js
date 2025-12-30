@@ -203,87 +203,95 @@ class FaceDetectionApp {
         }
     }
 
+    // Tải hình ảnh cho session
     async loadCapturesForSession(sessionId) {
         try {
             console.log(`📷 Loading captures for session: ${sessionId}`);
 
-            // Gọi API mới (giống video)
+            // Tải từ database
             const response = await fetch(`/api/captures/session/${sessionId}`);
 
             if (response.ok) {
                 const captures = await response.json();
+                console.log(`✅ Loaded ${captures.length} captures from database for session ${sessionId}`);
 
-                // Đảm bảo tất cả URL đều dùng HTTPS
-                const securedCaptures = captures.map(capture => ({
-                    ...capture,
-                    url: this.ensureHttpsUrl(capture.url)
-                }));
+                // Cập nhật currentSessionImages
+                this.currentSessionImages.set(sessionId, captures);
 
-                console.log(`✅ Loaded ${securedCaptures.length} captures from database`);
+                // Hiển thị trong UI
+                this.displaySessionCaptures(captures);
 
-                // Lưu vào currentSessionImages
-                this.currentSessionImages.set(sessionId, securedCaptures);
-
-                // Cập nhật localStorage
-                this.saveSessionImagesToLocalStorage(sessionId, securedCaptures);
-
-                // Hiển thị hình ảnh
-                this.displaySessionCaptures(securedCaptures);
-
-                return securedCaptures;
+                return captures;
             } else {
-                console.warn(`⚠️ No captures found for session: ${sessionId}`);
-                // Load từ localStorage nếu có
-                const localImages = this.currentSessionImages.get(sessionId) || [];
-                this.displaySessionCaptures(localImages);
-                return localImages;
+                console.log('⚠️ No captures found in database, trying local storage');
+
+                // Fallback: Tải từ local storage
+                const allCaptures = this.getAllCapturesFromLocalStorage();
+                const sessionCaptures = allCaptures.filter(capture =>
+                    capture.sessionId === sessionId
+                );
+
+                console.log(`📁 Loaded ${sessionCaptures.length} captures from local storage`);
+
+                // Cập nhật currentSessionImages
+                this.currentSessionImages.set(sessionId, sessionCaptures);
+
+                // Hiển thị trong UI
+                this.displaySessionCaptures(sessionCaptures);
+
+                return sessionCaptures;
             }
+
         } catch (error) {
             console.error('❌ Error loading captures:', error);
-            // Fallback: load từ localStorage
-            const localImages = this.currentSessionImages.get(sessionId) || [];
-            this.displaySessionCaptures(localImages);
-            return localImages;
+
+            // Fallback cuối cùng
+            const allCaptures = this.getAllCapturesFromLocalStorage();
+            const sessionCaptures = allCaptures.filter(capture =>
+                capture.sessionId === sessionId
+            );
+
+            this.displaySessionCaptures(sessionCaptures);
+            return sessionCaptures;
         }
     }
 
+    // Hiển thị hình ảnh trong session
     displaySessionCaptures(captures) {
         const container = document.getElementById('sessionCapturedImages');
-        if (!container) return;
+        if (!container) {
+            console.error('❌ Session captures container not found');
+            return;
+        }
+
+        // Xóa nội dung cũ
+        container.innerHTML = '';
 
         if (!captures || captures.length === 0) {
             container.innerHTML = `
             <div class="empty-state">
-                <div class="empty-state-icon">📷</div>
-                <h4 class="empty-state-title">Chưa có hình ảnh</h4>
-                <p class="empty-state-description">
-                    Chưa có hình ảnh nào được chụp từ session này.<br>
-                    Bạn có thể chụp ảnh từ video bằng nút "Chụp từ video".
-                </p>
+                <div class="empty-icon">📷</div>
+                <p>Chưa có hình ảnh nào được chụp trong session này</p>
             </div>
         `;
             return;
         }
 
-        container.innerHTML = '';
+        console.log(`🖼️ Displaying ${captures.length} captures`);
 
-        // Sắp xếp theo thời gian mới nhất trước
-        captures.sort((a, b) => new Date(b.created_at || b.timestamp) - new Date(a.created_at || a.timestamp));
+        // Sắp xếp theo thời gian (mới nhất đầu tiên)
+        const sortedCaptures = captures.sort((a, b) => b.timestamp - a.timestamp);
 
-        // Giới hạn hiển thị 12 ảnh
-        const displayCaptures = captures.slice(0, 12);
-
-        displayCaptures.forEach(capture => {
-            const imageElement = this.createCaptureElement(capture);
-            container.appendChild(imageElement);
+        // Hiển thị từng hình ảnh
+        sortedCaptures.forEach((capture, index) => {
+            const captureElement = this.createCaptureElement(capture, index);
+            container.appendChild(captureElement);
         });
 
-        // Hiển thị thông báo nếu có nhiều hơn 12 ảnh
-        if (captures.length > 12) {
-            const moreText = document.createElement('div');
-            moreText.className = 'more-images-text';
-            moreText.textContent = `+ ${captures.length - 12} hình ảnh khác`;
-            container.appendChild(moreText);
+        // Cập nhật số lượng
+        const countElement = document.getElementById('sessionCaptureCount');
+        if (countElement) {
+            countElement.textContent = `(${captures.length})`;
         }
     }
 
@@ -945,50 +953,58 @@ class FaceDetectionApp {
         return (bytes / (1024 * 1024)).toFixed(2) + ' MB';
     }
 
+    // Tạo element cho hình ảnh
     createCaptureElement(capture, index) {
         const div = document.createElement('div');
-        div.className = 'captured-image-grid-item';
-        div.dataset.captureId = capture.id || index;
-        div.dataset.publicId = capture.public_id || '';
+        div.className = 'captured-image-item';
+        div.dataset.id = capture.id;
+        div.dataset.sessionId = capture.sessionId;
 
-        // Đảm bảo URL dùng HTTPS
-        const secureUrl = this.ensureHttpsUrl(capture.url);
+        // Xác định loại
+        const typeIcon = capture.source === 'video' ? '🎬' : '📱';
+        const typeLabel = capture.source === 'video' ? 'Từ video' : 'Từ camera';
 
-        // Format thời gian
-        const time = new Date(capture.created_at || capture.timestamp);
-        const timeText = time.toLocaleTimeString('vi-VN', {
-            hour: '2-digit',
-            minute: '2-digit'
-        });
+        // Thời gian
+        const time = capture.metadata?.videoTime
+            ? this.formatVideoTime(capture.metadata.videoTime)
+            : capture.timeString;
 
-        // Thêm thông tin video time nếu có
-        let videoTimeText = '';
-        if (capture.video_time !== undefined && capture.video_time !== null) {
-            const mins = Math.floor(capture.video_time / 60);
-            const secs = Math.floor(capture.video_time % 60);
-            videoTimeText = `⏱️ ${mins}:${secs.toString().padStart(2, '0')}`;
-        }
-
+        // Nội dung
         div.innerHTML = `
-        <div class="capture-image-container">
-            <img src="${secureUrl}" 
-                 alt="Captured image ${index + 1}" 
-                 loading="lazy"
-                 onerror="this.onerror=null; this.src='data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMTAwJSIgaGVpZ2h0PSIxMDAlIiB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciPjxyZWN0IHdpZHRoPSIxMDAlIiBoZWlnaHQ9IjEwMCUiIGZpbGw9IiNmOGY5ZmEiLz48dGV4dCB4PSI1MCUiIHk9IjUwJSIgZm9udC1mYW1pbHk9IkFyaWFsIiBmb250LXNpemU9IjEyIiBmaWxsPSIjNjM2NjY5IiB0ZXh0LWFuY2hvcj0ibWlkZGxlIiBkeT0iLjNlbSI+SW1hZ2Ugbm90IGZvdW5kPC90ZXh0Pjwvc3ZnPg='">
+        <div class="image-wrapper">
+            <img src="${capture.url}" alt="Capture ${index + 1}" 
+                 onerror="this.src='data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMTUwIiBoZWlnaHQ9IjE1MCIgdmlld0JveD0iMCAwIDE1MCAxNTAiIGZpbGw9Im5vbmUiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+PHJlY3Qgd2lkdGg9IjE1MCIgaGVpZ2h0PSIxNTAiIGZpbGw9IiNGMEYwRjAiLz48dGV4dCB4PSI1MCUiIHk9IjUwJSIgZG9taW5hbnQtYmFzZWxpbmU9Im1pZGRsZSIgdGV4dC1hbmNob3I9Im1pZGRsZSIgZm9udC1mYW1pbHk9IkFyaWFsIiBmb250LXNpemU9IjEyIiBmaWxsPSIjODA4MDgwIj5JbWFnZSBub3QgZm91bmQ8L3RleHQ+PC9zdmc+'"
+                 loading="lazy" />
+            <div class="image-overlay">
+                <span class="image-type">${typeIcon} ${typeLabel}</span>
+                <span class="image-time">${time}</span>
+            </div>
+            ${capture.metadata?.videoTime ?
+                `<div class="video-time-badge">
+                    ⏱️ ${this.formatVideoTime(capture.metadata.videoTime)}
+                </div>` : ''}
         </div>
-        <div class="captured-image-grid-info">
-            <div class="time">${timeText}</div>
-            ${videoTimeText ? `<div class="video-time">${videoTimeText}</div>` : ''}
-            <div class="source">${capture.source === 'camera' ? '📸 Chụp trực tiếp' : '🎬 Từ video'}</div>
+        <div class="image-actions">
+            <button class="btn-view" onclick="window.open('${capture.url}', '_blank')">
+                👁️ Xem
+            </button>
+            <button class="btn-download" onclick="this.downloadImage('${capture.url}', '${capture.filename}')">
+                ⬇️ Tải
+            </button>
         </div>
     `;
 
-        // Thêm sự kiện click để xem ảnh lớn
-        div.addEventListener('click', () => {
-            this.showImageModal(capture);
-        });
-
         return div;
+    }
+
+    // Phương thức download
+    downloadImage(url, filename) {
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = filename;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
     }
 
     // Lưu session images vào localStorage
@@ -1338,22 +1354,25 @@ class FaceDetectionApp {
 
             console.log(`📤 Uploading captured image to Cloudinary: ${filename}`);
 
-            // Tạo FormData cho upload (giống video upload)
+            // Tạo FormData cho upload
             const formData = new FormData();
             formData.append('image', blob, filename);
             formData.append('source', source);
             formData.append('timestamp', timestamp.toString());
             formData.append('sessionId', this.currentSessionId || 'live');
 
-            // Thêm metadata nếu có
+            // Thêm metadata
             if (metadata.videoTime) {
                 formData.append('videoTime', metadata.videoTime.toString());
+            }
+            if (metadata.videoDuration) {
+                formData.append('videoDuration', metadata.videoDuration.toString());
             }
             if (this.faceDetector?.totalFacesCount) {
                 formData.append('faceCount', this.faceDetector.totalFacesCount.toString());
             }
 
-            // Gửi đến API để upload lên Cloudinary (giống video)
+            // Gửi đến API để upload
             const response = await fetch('/api/captures/upload', {
                 method: 'POST',
                 body: formData
@@ -1372,7 +1391,7 @@ class FaceDetectionApp {
             const secureUrl = this.ensureHttpsUrl(result.url);
 
             const imageData = {
-                id: result.id || timestamp,
+                id: result.id || `capture_${timestamp}`,
                 url: secureUrl,
                 public_id: result.public_id,
                 filename: result.filename || filename,
@@ -1384,7 +1403,10 @@ class FaceDetectionApp {
                 metadata: metadata
             };
 
-            // Lưu vào local storage và current session
+            // 🔥 QUAN TRỌNG: Lưu vào database thông qua API
+            await this.saveCaptureToDatabase(imageData);
+
+            // Lưu vào local storage
             this.saveToLocalStorage(imageData);
 
             // Thêm vào current session images
@@ -1400,10 +1422,7 @@ class FaceDetectionApp {
                     sessionImages.pop();
                 }
 
-                // Cập nhật UI nếu đang xem session này
-                if (document.getElementById('sessionCapturedImages')) {
-                    this.displaySessionCaptures(sessionImages);
-                }
+                console.log(`💾 Added to session ${this.currentSessionId}, total: ${sessionImages.length} images`);
             }
 
             return imageData;
@@ -1411,12 +1430,12 @@ class FaceDetectionApp {
         } catch (error) {
             console.error('❌ Error uploading image to Cloudinary:', error);
 
-            // Fallback cho development (không có Cloudinary)
+            // Fallback cho development
             const tempUrl = URL.createObjectURL(blob);
             const timestamp = new Date().getTime();
 
             const imageData = {
-                id: timestamp,
+                id: `local_${timestamp}`,
                 url: tempUrl,
                 filename: `capture_${timestamp}.jpg`,
                 timestamp: timestamp,
@@ -1428,10 +1447,52 @@ class FaceDetectionApp {
                 isLocal: true
             };
 
-            // Vẫn lưu vào local storage
+            // Vẫn lưu vào local storage và database
             this.saveToLocalStorage(imageData);
+            try {
+                await this.saveCaptureToDatabase(imageData);
+            } catch (dbError) {
+                console.error('❌ Failed to save to database:', dbError);
+            }
 
             return imageData;
+        }
+    }
+
+    // Lưu hình ảnh vào database
+    async saveCaptureToDatabase(captureData) {
+        try {
+            console.log(`💾 Saving capture to database: ${captureData.id}`);
+
+            const response = await fetch('/api/captures/save', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    id: captureData.id,
+                    url: captureData.url,
+                    filename: captureData.filename,
+                    timestamp: captureData.timestamp,
+                    source: captureData.source,
+                    sessionId: captureData.sessionId,
+                    created_at: captureData.created_at,
+                    metadata: captureData.metadata,
+                    isLocal: captureData.isLocal || false
+                })
+            });
+
+            if (!response.ok) {
+                throw new Error(`Database save failed: ${response.status}`);
+            }
+
+            const result = await response.json();
+            console.log('✅ Capture saved to database:', result);
+            return result;
+
+        } catch (error) {
+            console.error('❌ Error saving capture to database:', error);
+            throw error;
         }
     }
 
