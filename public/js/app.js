@@ -22,6 +22,9 @@ class FaceDetectionApp {
         this.handleCaptureClick = null;
         this.isCapturing = false;
 
+        // Thêm Set để theo dõi blob URLs
+        this.blobUrls = new Set();
+
         if (document.readyState === 'loading') {
             document.addEventListener('DOMContentLoaded', () => this.initialize());
         } else {
@@ -1348,114 +1351,172 @@ class FaceDetectionApp {
     }
 
     async saveCapturedImage(blob, source = 'camera', metadata = {}) {
-        try {
-            const timestamp = new Date().getTime();
-            const filename = `capture_${timestamp}.jpg`;
+        let retryCount = 0;
+        const maxRetries = 2;
 
-            console.log(`📤 Uploading captured image to Cloudinary: ${filename}`);
-
-            // Tạo FormData cho upload
-            const formData = new FormData();
-            formData.append('image', blob, filename);
-            formData.append('source', source);
-            formData.append('timestamp', timestamp.toString());
-            formData.append('sessionId', this.currentSessionId || 'live');
-
-            // Thêm metadata
-            if (metadata.videoTime) {
-                formData.append('videoTime', metadata.videoTime.toString());
-            }
-            if (metadata.videoDuration) {
-                formData.append('videoDuration', metadata.videoDuration.toString());
-            }
-            if (this.faceDetector?.totalFacesCount) {
-                formData.append('faceCount', this.faceDetector.totalFacesCount.toString());
-            }
-
-            // Gửi đến API để upload
-            const response = await fetch('/api/captures/upload', {
-                method: 'POST',
-                body: formData
-            });
-
-            if (!response.ok) {
-                const errorText = await response.text();
-                console.error('❌ Upload failed:', errorText);
-                throw new Error('Upload failed: ' + errorText);
-            }
-
-            const result = await response.json();
-            console.log('✅ Image uploaded to Cloudinary:', result);
-
-            // Đảm bảo URL dùng HTTPS
-            const secureUrl = this.ensureHttpsUrl(result.url);
-
-            const imageData = {
-                id: result.id || `capture_${timestamp}`,
-                url: secureUrl,
-                public_id: result.public_id,
-                filename: result.filename || filename,
-                timestamp: timestamp,
-                source: source,
-                sessionId: this.currentSessionId || 'live',
-                created_at: result.created_at || new Date().toISOString(),
-                timeString: new Date(timestamp).toLocaleTimeString('vi-VN'),
-                metadata: metadata
-            };
-
-            // 🔥 QUAN TRỌNG: Lưu vào database thông qua API
-            await this.saveCaptureToDatabase(imageData);
-
-            // Lưu vào local storage
-            this.saveToLocalStorage(imageData);
-
-            // Thêm vào current session images
-            if (this.currentSessionId && this.currentSessionId !== 'live') {
-                if (!this.currentSessionImages.has(this.currentSessionId)) {
-                    this.currentSessionImages.set(this.currentSessionId, []);
-                }
-                const sessionImages = this.currentSessionImages.get(this.currentSessionId);
-                sessionImages.unshift(imageData);
-
-                // Giới hạn 50 ảnh mỗi session
-                if (sessionImages.length > 50) {
-                    sessionImages.pop();
-                }
-
-                console.log(`💾 Added to session ${this.currentSessionId}, total: ${sessionImages.length} images`);
-            }
-
-            return imageData;
-
-        } catch (error) {
-            console.error('❌ Error uploading image to Cloudinary:', error);
-
-            // Fallback cho development
-            const tempUrl = URL.createObjectURL(blob);
-            const timestamp = new Date().getTime();
-
-            const imageData = {
-                id: `local_${timestamp}`,
-                url: tempUrl,
-                filename: `capture_${timestamp}.jpg`,
-                timestamp: timestamp,
-                source: source,
-                sessionId: this.currentSessionId || 'live',
-                created_at: new Date().toISOString(),
-                timeString: new Date(timestamp).toLocaleTimeString('vi-VN'),
-                metadata: metadata,
-                isLocal: true
-            };
-
-            // Vẫn lưu vào local storage và database
-            this.saveToLocalStorage(imageData);
+        while (retryCount <= maxRetries) {
             try {
-                await this.saveCaptureToDatabase(imageData);
-            } catch (dbError) {
-                console.error('❌ Failed to save to database:', dbError);
-            }
+                const timestamp = new Date().getTime();
+                const filename = `capture_${timestamp}.jpg`;
 
-            return imageData;
+                console.log(`📤 Uploading captured image to Cloudinary (attempt ${retryCount + 1}): ${filename}`);
+
+                // Tạo FormData
+                const formData = new FormData();
+                formData.append('image', blob, filename);
+                formData.append('source', source);
+                formData.append('timestamp', timestamp.toString());
+                formData.append('sessionId', this.currentSessionId || 'live');
+
+                // Thêm metadata
+                if (metadata.videoTime) {
+                    formData.append('videoTime', metadata.videoTime.toString());
+                }
+                if (metadata.videoDuration) {
+                    formData.append('videoDuration', metadata.videoDuration.toString());
+                }
+                if (this.faceDetector?.totalFacesCount) {
+                    formData.append('faceCount', this.faceDetector.totalFacesCount.toString());
+                }
+
+                // Gửi upload request
+                const response = await fetch('/api/captures/upload', {
+                    method: 'POST',
+                    body: formData
+                });
+
+                if (response.ok) {
+                    const result = await response.json();
+                    console.log('✅ Image uploaded to Cloudinary:', result);
+
+                    // Đảm bảo URL dùng HTTPS
+                    const secureUrl = this.ensureHttpsUrl(result.url);
+
+                    const imageData = {
+                        id: result.id || `cloud_${timestamp}`,
+                        url: secureUrl,
+                        public_id: result.public_id,
+                        filename: result.filename || filename,
+                        timestamp: timestamp,
+                        source: source,
+                        sessionId: this.currentSessionId || 'live',
+                        created_at: result.created_at || new Date().toISOString(),
+                        timeString: new Date(timestamp).toLocaleTimeString('vi-VN'),
+                        metadata: metadata
+                    };
+
+                    // Lưu vào database
+                    await this.saveCaptureToDatabase(imageData);
+
+                    // Lưu vào local storage
+                    this.saveToLocalStorage(imageData);
+
+                    // Thêm vào current session images
+                    if (this.currentSessionId && this.currentSessionId !== 'live') {
+                        if (!this.currentSessionImages.has(this.currentSessionId)) {
+                            this.currentSessionImages.set(this.currentSessionId, []);
+                        }
+                        const sessionImages = this.currentSessionImages.get(this.currentSessionId);
+                        sessionImages.unshift(imageData);
+
+                        if (sessionImages.length > 50) {
+                            sessionImages.pop();
+                        }
+
+                        console.log(`💾 Added to session ${this.currentSessionId}, total: ${sessionImages.length} images`);
+                    }
+
+                    return imageData;
+                } else {
+                    const errorText = await response.text();
+                    console.error(`❌ Upload failed (attempt ${retryCount + 1}):`, errorText);
+
+                    if (retryCount === maxRetries) {
+                        throw new Error('Upload failed after retries: ' + errorText);
+                    }
+
+                    retryCount++;
+                    await new Promise(resolve => setTimeout(resolve, 1000 * retryCount)); // Exponential backoff
+                }
+
+            } catch (error) {
+                console.error(`❌ Error uploading image (attempt ${retryCount + 1}):`, error);
+
+                if (retryCount === maxRetries) {
+                    console.log('🔄 Falling back to local storage');
+
+                    // Fallback: Tạo local URL
+                    const tempUrl = URL.createObjectURL(blob);
+                    const timestamp = new Date().getTime();
+
+                    const imageData = {
+                        id: `local_${timestamp}`,
+                        url: tempUrl,
+                        filename: `capture_${timestamp}.jpg`,
+                        timestamp: timestamp,
+                        source: source,
+                        sessionId: this.currentSessionId || 'live',
+                        created_at: new Date().toISOString(),
+                        timeString: new Date(timestamp).toLocaleTimeString('vi-VN'),
+                        metadata: metadata,
+                        isLocal: true
+                    };
+
+                    // Lưu vào local storage
+                    this.saveToLocalStorage(imageData);
+
+                    // Thử lưu vào database (không bắt lỗi)
+                    try {
+                        await this.saveCaptureToDatabase(imageData);
+                    } catch (dbError) {
+                        console.error('❌ Failed to save to database (fallback):', dbError);
+                    }
+
+                    return imageData;
+                }
+
+                retryCount++;
+                await new Promise(resolve => setTimeout(resolve, 1000 * retryCount));
+            }
+        }
+    }
+
+    // Phương thức cleanup blob URLs
+    cleanupBlobUrls() {
+        console.log('🧹 Cleaning up blob URLs...');
+        let cleanedCount = 0;
+
+        this.blobUrls.forEach(url => {
+            try {
+                URL.revokeObjectURL(url);
+                cleanedCount++;
+            } catch (e) {
+                console.warn('⚠️ Failed to revoke blob URL:', e);
+            }
+        });
+
+        this.blobUrls.clear();
+        console.log(`✅ Cleaned up ${cleanedCount} blob URLs`);
+    }
+
+    // Phương thức thêm blob URL vào tracking
+    addBlobUrl(url) {
+        if (url && url.startsWith('blob:')) {
+            this.blobUrls.add(url);
+        }
+        return url;
+    }
+
+    // Phương thức xóa blob URL cụ thể
+    removeBlobUrl(url) {
+        if (this.blobUrls.has(url)) {
+            try {
+                URL.revokeObjectURL(url);
+                this.blobUrls.delete(url);
+                console.log('🗑️ Removed blob URL:', url.substring(0, 50) + '...');
+            } catch (e) {
+                console.warn('⚠️ Failed to remove blob URL:', e);
+            }
         }
     }
 
@@ -1496,20 +1557,23 @@ class FaceDetectionApp {
         }
     }
 
-    // Thêm vào class FaceDetectionApp
+    // Đảm bảo URL sử dụng HTTPS
     ensureHttpsUrl(url) {
         if (!url) return url;
 
-        // Kiểm tra xem URL có bắt đầu bằng http:// không
+        // Nếu là data URL hoặc đã là HTTPS thì giữ nguyên
+        if (url.startsWith('data:') || url.startsWith('blob:') || url.startsWith('https://')) {
+            return url;
+        }
+
+        // Chuyển HTTP thành HTTPS
         if (url.startsWith('http://')) {
-            console.log(`🔄 Converting HTTP to HTTPS: ${url}`);
             return url.replace('http://', 'https://');
         }
 
-        // Nếu URL không có protocol, thêm https://
-        if (url.startsWith('//')) {
-            console.log(`🔄 Adding HTTPS protocol: ${url}`);
-            return 'https:' + url;
+        // Thêm HTTPS nếu không có protocol
+        if (!url.startsWith('http')) {
+            return `https://${url}`;
         }
 
         return url;
