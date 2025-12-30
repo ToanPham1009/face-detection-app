@@ -25,6 +25,9 @@ class FaceDetectionApp {
         // Thêm Set để theo dõi blob URLs
         this.blobUrls = new Set();
 
+        // Setup cleanup listeners
+        this.setupCleanupListeners();
+
         if (document.readyState === 'loading') {
             document.addEventListener('DOMContentLoaded', () => this.initialize());
         } else {
@@ -148,6 +151,115 @@ class FaceDetectionApp {
     hideDeleteModal() {
         this.deleteModal.style.display = 'none';
         this.currentDeleteSession = null;
+    }
+
+    // Phương thức setup cleanup listeners
+    setupCleanupListeners() {
+        // Cleanup khi trang bị đóng
+        window.addEventListener('beforeunload', () => {
+            this.cleanupBlobUrls();
+            console.log('🧹 Cleanup before unload');
+        });
+
+        // Cleanup khi tab bị ẩn
+        document.addEventListener('visibilitychange', () => {
+            if (document.hidden) {
+                console.log('👁️ Tab hidden, cleaning up old blob URLs...');
+                this.cleanupOldBlobUrls(10); // Cleanup URLs cũ hơn 10 phút
+            }
+        });
+
+        // Auto-cleanup mỗi 5 phút
+        this.autoCleanupInterval = setInterval(() => {
+            this.cleanupOldBlobUrls(10); // Cleanup URLs cũ hơn 10 phút
+        }, 5 * 60 * 1000); // 5 phút
+
+        console.log('✅ Cleanup listeners setup');
+    }
+
+    // Cleanup blob URLs cũ hơn X phút
+    cleanupOldBlobUrls(minutesOld = 10) {
+        console.log(`⏰ Running auto-cleanup for URLs older than ${minutesOld} minutes...`);
+        let cleanedCount = 0;
+
+        const cutoffTime = Date.now() - (minutesOld * 60 * 1000);
+
+        // Duyệt qua tất cả blob URLs
+        this.blobUrls.forEach(url => {
+            try {
+                // Lấy timestamp từ URL nếu có
+                // (hoặc theo dõi thời gian tạo riêng)
+                URL.revokeObjectURL(url);
+                this.blobUrls.delete(url);
+                cleanedCount++;
+            } catch (e) {
+                console.warn('⚠️ Failed to cleanup blob URL:', e);
+            }
+        });
+
+        if (cleanedCount > 0) {
+            console.log(`🧹 Auto-cleaned ${cleanedCount} old blob URLs`);
+        }
+    }
+
+    // Thêm vào khi tạo blob URL
+    createBlobUrl(blob) {
+        const blobUrl = URL.createObjectURL(blob);
+        this.blobUrls.add(blobUrl);
+        return blobUrl;
+    }
+
+    // Cleanup khi xóa session hoặc chuyển tab
+    cleanupSessionResources(sessionId) {
+        console.log(`🧹 Cleaning up resources for session: ${sessionId}`);
+
+        // 1. Dừng video nếu đang phát
+        const videoPlayer = document.getElementById('playbackVideo');
+        if (videoPlayer) {
+            videoPlayer.pause();
+            videoPlayer.src = '';
+            videoPlayer.load();
+        }
+
+        // 2. Cleanup blob URLs của session này
+        // (Cần lưu thêm metadata để biết URL nào thuộc session nào)
+    }
+
+    // Thêm vào khi xóa capture
+    async deleteCapture(captureId, sessionId) {
+        try {
+            // Tìm capture trong session
+            const sessionImages = this.currentSessionImages.get(sessionId) || [];
+            const capture = sessionImages.find(img => img.id === captureId);
+
+            if (capture) {
+                // Cleanup blob URL nếu có
+                if (capture.url && capture.url.startsWith('blob:')) {
+                    this.removeBlobUrl(capture.url);
+                }
+
+                // Xóa từ UI
+                const index = sessionImages.findIndex(img => img.id === captureId);
+                if (index !== -1) {
+                    sessionImages.splice(index, 1);
+                    this.currentSessionImages.set(sessionId, sessionImages);
+                    this.displaySessionCaptures(sessionImages);
+                }
+
+                // Xóa từ database (gọi API)
+                if (!capture.isLocal) {
+                    await fetch(`/api/captures/${capture.public_id}`, {
+                        method: 'DELETE'
+                    });
+                }
+
+                console.log(`🗑️ Deleted capture ${captureId}`);
+                this.showNotification('✅ Đã xóa hình ảnh', 'success');
+            }
+        } catch (error) {
+            console.error('❌ Error deleting capture:', error);
+            this.showNotification('❌ Lỗi khi xóa hình ảnh', 'error');
+        }
     }
 
     async executeDelete() {
@@ -1351,133 +1463,100 @@ class FaceDetectionApp {
     }
 
     async saveCapturedImage(blob, source = 'camera', metadata = {}) {
-        let retryCount = 0;
-        const maxRetries = 2;
+        try {
+            const timestamp = new Date().getTime();
+            const filename = `capture_${timestamp}.jpg`;
 
-        while (retryCount <= maxRetries) {
-            try {
-                const timestamp = new Date().getTime();
-                const filename = `capture_${timestamp}.jpg`;
+            console.log(`📤 Uploading captured image to Cloudinary: ${filename}`);
 
-                console.log(`📤 Uploading captured image to Cloudinary (attempt ${retryCount + 1}): ${filename}`);
+            // Tạo FormData
+            const formData = new FormData();
+            formData.append('image', blob, filename);
+            formData.append('source', source);
+            formData.append('timestamp', timestamp.toString());
+            formData.append('sessionId', this.currentSessionId || 'live');
 
-                // Tạo FormData
-                const formData = new FormData();
-                formData.append('image', blob, filename);
-                formData.append('source', source);
-                formData.append('timestamp', timestamp.toString());
-                formData.append('sessionId', this.currentSessionId || 'live');
-
-                // Thêm metadata
-                if (metadata.videoTime) {
-                    formData.append('videoTime', metadata.videoTime.toString());
-                }
-                if (metadata.videoDuration) {
-                    formData.append('videoDuration', metadata.videoDuration.toString());
-                }
-                if (this.faceDetector?.totalFacesCount) {
-                    formData.append('faceCount', this.faceDetector.totalFacesCount.toString());
-                }
-
-                // Gửi upload request
-                const response = await fetch('/api/captures/upload', {
-                    method: 'POST',
-                    body: formData
-                });
-
-                if (response.ok) {
-                    const result = await response.json();
-                    console.log('✅ Image uploaded to Cloudinary:', result);
-
-                    // Đảm bảo URL dùng HTTPS
-                    const secureUrl = this.ensureHttpsUrl(result.url);
-
-                    const imageData = {
-                        id: result.id || `cloud_${timestamp}`,
-                        url: secureUrl,
-                        public_id: result.public_id,
-                        filename: result.filename || filename,
-                        timestamp: timestamp,
-                        source: source,
-                        sessionId: this.currentSessionId || 'live',
-                        created_at: result.created_at || new Date().toISOString(),
-                        timeString: new Date(timestamp).toLocaleTimeString('vi-VN'),
-                        metadata: metadata
-                    };
-
-                    // Lưu vào database
-                    await this.saveCaptureToDatabase(imageData);
-
-                    // Lưu vào local storage
-                    this.saveToLocalStorage(imageData);
-
-                    // Thêm vào current session images
-                    if (this.currentSessionId && this.currentSessionId !== 'live') {
-                        if (!this.currentSessionImages.has(this.currentSessionId)) {
-                            this.currentSessionImages.set(this.currentSessionId, []);
-                        }
-                        const sessionImages = this.currentSessionImages.get(this.currentSessionId);
-                        sessionImages.unshift(imageData);
-
-                        if (sessionImages.length > 50) {
-                            sessionImages.pop();
-                        }
-
-                        console.log(`💾 Added to session ${this.currentSessionId}, total: ${sessionImages.length} images`);
-                    }
-
-                    return imageData;
-                } else {
-                    const errorText = await response.text();
-                    console.error(`❌ Upload failed (attempt ${retryCount + 1}):`, errorText);
-
-                    if (retryCount === maxRetries) {
-                        throw new Error('Upload failed after retries: ' + errorText);
-                    }
-
-                    retryCount++;
-                    await new Promise(resolve => setTimeout(resolve, 1000 * retryCount)); // Exponential backoff
-                }
-
-            } catch (error) {
-                console.error(`❌ Error uploading image (attempt ${retryCount + 1}):`, error);
-
-                if (retryCount === maxRetries) {
-                    console.log('🔄 Falling back to local storage');
-
-                    // Fallback: Tạo local URL
-                    const tempUrl = URL.createObjectURL(blob);
-                    const timestamp = new Date().getTime();
-
-                    const imageData = {
-                        id: `local_${timestamp}`,
-                        url: tempUrl,
-                        filename: `capture_${timestamp}.jpg`,
-                        timestamp: timestamp,
-                        source: source,
-                        sessionId: this.currentSessionId || 'live',
-                        created_at: new Date().toISOString(),
-                        timeString: new Date(timestamp).toLocaleTimeString('vi-VN'),
-                        metadata: metadata,
-                        isLocal: true
-                    };
-
-                    // Lưu vào local storage
-                    this.saveToLocalStorage(imageData);
-
-                    // Thử lưu vào database (không bắt lỗi)
-                    try {
-                        await this.saveCaptureToDatabase(imageData);
-                    } catch (dbError) {
-                        console.error('❌ Failed to save to database (fallback):', dbError);
-                    }
-
-                    return imageData;
-                }
-
-                retryCount++;
-                await new Promise(resolve => setTimeout(resolve, 1000 * retryCount));
+            // Thêm metadata
+            if (metadata.videoTime) {
+                formData.append('videoTime', metadata.videoTime.toString());
             }
+            if (metadata.videoDuration) {
+                formData.append('videoDuration', metadata.videoDuration.toString());
+            }
+            if (this.faceDetector?.totalFacesCount) {
+                formData.append('faceCount', this.faceDetector.totalFacesCount.toString());
+            }
+
+            // Gửi đến API captures/upload
+            const response = await fetch('/api/captures/upload', {
+                method: 'POST',
+                body: formData
+            });
+
+            if (!response.ok) {
+                const errorText = await response.text();
+                console.error('❌ Upload failed:', errorText);
+                throw new Error('Upload failed: ' + errorText);
+            }
+
+            const result = await response.json();
+            console.log('✅ Image uploaded:', result);
+
+            // Tạo imageData từ result
+            const imageData = {
+                id: result.id || `capture_${timestamp}`,
+                url: result.url,
+                public_id: result.public_id,
+                filename: result.filename || filename,
+                timestamp: timestamp,
+                source: source,
+                sessionId: this.currentSessionId || 'live',
+                created_at: result.created_at || new Date().toISOString(),
+                timeString: new Date(timestamp).toLocaleTimeString('vi-VN'),
+                metadata: metadata
+            };
+
+            // Lưu vào current session images
+            if (this.currentSessionId && this.currentSessionId !== 'live') {
+                if (!this.currentSessionImages.has(this.currentSessionId)) {
+                    this.currentSessionImages.set(this.currentSessionId, []);
+                }
+                const sessionImages = this.currentSessionImages.get(this.currentSessionId);
+                sessionImages.unshift(imageData);
+
+                if (sessionImages.length > 50) {
+                    sessionImages.pop();
+                }
+
+                console.log(`💾 Added to session ${this.currentSessionId}, total: ${sessionImages.length} images`);
+            }
+
+            return imageData;
+
+        } catch (error) {
+            console.error('❌ Error uploading image:', error);
+
+            // Fallback: tạo local blob URL
+            const tempUrl = URL.createObjectURL(blob);
+            const timestamp = new Date().getTime();
+
+            const imageData = {
+                id: `local_${timestamp}`,
+                url: tempUrl,
+                filename: `capture_${timestamp}.jpg`,
+                timestamp: timestamp,
+                source: source,
+                sessionId: this.currentSessionId || 'live',
+                created_at: new Date().toISOString(),
+                timeString: new Date(timestamp).toLocaleTimeString('vi-VN'),
+                metadata: metadata,
+                isLocal: true
+            };
+
+            // Track blob URL
+            this.blobUrls.add(tempUrl);
+
+            return imageData;
         }
     }
 
