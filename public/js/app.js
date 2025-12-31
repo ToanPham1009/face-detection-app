@@ -1931,6 +1931,13 @@ class FaceDetectionApp {
             const videoData = await this.videoManager.stopRecording();
             console.log('✅ Video recording stopped:', videoData);
 
+            // ĐẢM BẢO videoData có public_id trước khi lưu session
+            if (videoData && videoData.public_id) {
+                console.log('📦 Video public_id received:', videoData.public_id);
+            } else {
+                console.warn('⚠️ No public_id in videoData:', videoData);
+            }
+
             // Ẩn trạng thái recording
             const recordingStatus = document.getElementById('recordingStatus');
             if (recordingStatus) {
@@ -1948,10 +1955,8 @@ class FaceDetectionApp {
 
         } catch (error) {
             console.error('❌ Error stopping tracking/recording:', error);
-
             // Vẫn cố gắng lưu session data (có thể không có video)
             await this.saveSessionData({ filename: null }, null);
-
             this.showNotification('❌ Lỗi khi dừng thống kê', 'error');
         }
     }
@@ -3159,7 +3164,8 @@ class FaceDetectionApp {
                 end_time: new Date().toISOString(),
                 total_faces: sessionInfo?.totalFaces || this.faceDetector.totalFacesCount,
                 duration: sessionInfo?.duration || Math.floor((Date.now() - this.faceDetector.startTime) / 1000),
-                video_filename: videoData?.filename || null
+                video_filename: videoData?.filename || null,
+                video_public_id: videoData?.public_id || null
             };
 
             console.log('💾 Saving session data:', sessionData);
