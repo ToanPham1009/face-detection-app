@@ -54,6 +54,9 @@ class FaceDetector {
         this.cleanupMediaPipe = this.cleanupMediaPipe.bind(this);
         this.stopCamera = this.stopCamera.bind(this);
 
+        this.isTrackingActive = false; // Thêm dòng này
+        this.currentFaceCount = 0;
+
         // Add cleanup on page unload
         window.addEventListener('beforeunload', () => {
             this.destroy();
@@ -1332,8 +1335,9 @@ class FaceDetector {
         this.sessionId = Date.now().toString();
         this.startTime = Date.now();
 
-        // QUAN TRỌNG: KHÔNG reset totalFacesCount nếu muốn tiếp tục đếm từ trước
-        // this.totalFacesCount = 0; // BỎ DÒNG NÀY
+        this.isTrackingActive = true;
+        this.sessionId = this.sessionId || Date.now().toString(); // Tạo sessionId nếu chưa có
+        console.log('🎬 Tracking started, sessionId:', this.sessionId);
 
         // Reset tracker nhưng KHÔNG reset hoàn toàn nếu muốn tiếp tục
         if (this.faceTracker && this.faceTracker.resetCompletely) {
@@ -1363,7 +1367,6 @@ class FaceDetector {
         console.log('✅ Professional face tracking started');
     }
 
-    // Sửa lại stopTracking để chỉ dừng tracking, không dừng camera
     stopTracking() {
         if (!this.isTracking) return;
 
@@ -1376,10 +1379,6 @@ class FaceDetector {
 
         // CHỈ dừng tracking flag
         this.isTracking = false;
-
-        // QUAN TRỌNG: KHÔNG reset sessionId và startTime ngay lập tức
-        // this.sessionId = null; // BỎ DÒNG NÀY
-        // this.startTime = null; // BỎ DÒNG NÀY
 
         // QUAN TRỌNG: KHÔNG xóa các faces đang tracked, chỉ đánh dấu không track nữa
         if (this.faceTracker && this.faceTracker.trackedPersons) {
@@ -1413,6 +1412,17 @@ class FaceDetector {
 
         this.updateButtonStates();
 
+        this.isTrackingActive = false;
+        const sessionInfo = {
+            sessionId: this.sessionId,
+            totalFaces: this.totalFacesCount,
+            duration: Math.floor((Date.now() - this.startTime) / 1000)
+        };
+        // Reset sessionId sau khi dừng
+        this.sessionId = null;
+        console.log('⏸️ Tracking stopped');
+        return sessionInfo;
+
         console.log(`📊 Tracking stopped. Total faces detected: ${this.totalFacesCount}`);
 
         // TRẢ VỀ DỮ LIỆU SESSION ĐỂ LƯU
@@ -1423,7 +1433,6 @@ class FaceDetector {
             duration: startTimeToSave ? Math.floor((Date.now() - startTimeToSave) / 1000) : 0
         };
     }
-
 
     // Thêm phương thức để debug FPS
     getCurrentFPS() {

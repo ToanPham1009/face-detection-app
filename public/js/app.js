@@ -28,6 +28,8 @@ class FaceDetectionApp {
         // Setup cleanup listeners
         this.setupCleanupListeners();
 
+        this.eventListenersAttached = false; // Thêm dòng này
+
         if (document.readyState === 'loading') {
             document.addEventListener('DOMContentLoaded', () => this.initialize());
         } else {
@@ -1169,6 +1171,12 @@ class FaceDetectionApp {
     setupEventListeners() {
         console.log('🔗 Setting up event listeners...');
 
+        // Kiểm tra đã gắn listeners chưa
+        if (this.eventListenersAttached) {
+            console.log('ℹ️ Event listeners already attached, skipping...');
+            return;
+        }
+
         const elements = {
             'startCamera': async () => {
                 try {
@@ -1188,7 +1196,7 @@ class FaceDetectionApp {
                 await this.stopTracking();
             },
             'captureImage': () => {
-                this.captureFromCamera();
+                this.handleCaptureClick();
             },
 
             'captureFromVideo': () => {
@@ -1228,6 +1236,41 @@ class FaceDetectionApp {
                 console.warn(`⚠️ Element not found: ${id}`);
             }
         }
+
+        this.eventListenersAttached = true; // Đánh dấu đã gắn listeners
+    }
+
+    // Thêm vào class FaceDetectionApp
+    handleCaptureClick() {
+        // Kiểm tra biến cờ tránh chụp nhiều lần
+        if (this.isCapturing) {
+            console.log('⏳ Đang chụp ảnh, vui lòng đợi...');
+            return;
+        }
+
+        console.log('📸 Capture button clicked - checking conditions...');
+
+        // ĐIỀU KIỆN QUAN TRỌNG: Chỉ chụp khi đang theo dõi
+        if (!this.faceDetector?.isTrackingActive) {
+            this.showNotification('⏸️ Vui lòng bắt đầu theo dõi (Start Tracking) trước khi chụp hình', 'warning');
+            return;
+        }
+
+        // Kiểm tra camera có bật không
+        if (!this.faceDetector?.isCameraOn) {
+            this.showNotification('📷 Vui lòng bật camera trước khi chụp hình', 'warning');
+            return;
+        }
+
+        // Đặt cờ đang chụp
+        this.isCapturing = true;
+
+        // Gọi hàm chụp ảnh
+        this.captureFromCamera().finally(() => {
+            // Reset cờ sau khi chụp xong (dù thành công hay thất bại)
+            this.isCapturing = false;
+            console.log('✅ Capture process completed, ready for next capture');
+        });
     }
 
     // Phương thức chụp từ camera live
@@ -1288,6 +1331,17 @@ class FaceDetectionApp {
                 throw new Error('Failed to create image blob');
             }
 
+            // QUAN TRỌNG: Lấy sessionId hiện tại từ faceDetector
+            const currentSessionId = this.faceDetector?.sessionId;
+            console.log('🎯 Current session ID for capture:', currentSessionId);
+
+            // Tạo metadata với sessionId
+            const metadata = {
+                sessionId: currentSessionId,
+                faceCount: this.faceDetector?.currentFaceCount || 0,
+                timestamp: Date.now()
+            };
+
             // Lưu hình ảnh
             const imageDataResult = await this.saveCapturedImage(blob, 'camera');
 
@@ -1302,6 +1356,7 @@ class FaceDetectionApp {
         } catch (error) {
             console.error('❌ Error capturing image:', error);
             this.showNotification('❌ Lỗi khi chụp hình: ' + error.message, 'error');
+            throw error;
         }
     }
 
@@ -1427,7 +1482,6 @@ class FaceDetectionApp {
         return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
     }
 
-    // Trong constructor hoặc init()
     initCaptureEvents() {
         const captureButton = document.getElementById('captureImage');
         if (captureButton) {
