@@ -3202,7 +3202,26 @@ class FaceDetectionApp {
 
     async saveSessionData(data) {
         try {
-            // data bây giờ chứa cả sessionInfo và videoData
+
+            // Tính duration theo 2 cách, ưu tiên từ videoData
+            let durationValue;
+
+            if (data.duration) {
+                // Lấy từ videoData (số thập phân chính xác)
+                durationValue = parseFloat(data.duration);
+            } else if (data.startTime) {
+                // Tính từ thời gian bắt đầu/kết thúc
+                const startTime = new Date(data.startTime).getTime();
+                const endTime = new Date().getTime();
+                durationValue = (endTime - startTime) / 1000; // giây
+            } else {
+                // Fallback
+                durationValue = Math.floor((Date.now() - this.faceDetector.startTime) / 1000);
+            }
+
+            // Làm tròn đến 2 chữ số thập phân
+            durationValue = Math.round(durationValue * 100) / 100;
+
             const sessionData = {
                 id: data.sessionId, // Lấy từ data (đã merge)
                 start_time: new Date(data.startTime || this.faceDetector.startTime).toISOString(),
