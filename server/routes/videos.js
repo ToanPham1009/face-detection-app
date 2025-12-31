@@ -8,7 +8,7 @@ const router = express.Router();
 
 console.log('Cloudinary config:', {
   cloud_name: process.env.CLOUDINARY_CLOUD_NAME ? 'SET' : 'MISSING',
-  api_key: process.env.CLOUDINARY_API_KEY ? 'SET' : 'MISSING', 
+  api_key: process.env.CLOUDINARY_API_KEY ? 'SET' : 'MISSING',
   api_secret: process.env.CLOUDINARY_API_SECRET ? 'SET' : 'MISSING'
 });
 
@@ -24,14 +24,15 @@ const upload = multer({
 router.post('/upload', upload.single('video'), async (req, res) => {
   try {
     console.log('📤 Uploading video to Cloudinary...');
-    
+    console.log('🎯 SessionId from request:', req.body.sessionId);
+
     if (!req.file) {
       return res.status(400).json({ error: 'No video file uploaded' });
     }
 
     // Upload trực tiếp từ buffer
     const result = await cloudinary.uploader.upload(
-      `data:video/mp4;base64,${req.file.buffer.toString('base64')}`, 
+      `data:video/mp4;base64,${req.file.buffer.toString('base64')}`,
       {
         resource_type: "video",
         folder: "face-detection-videos",
@@ -54,9 +55,11 @@ router.post('/upload', upload.single('video'), async (req, res) => {
         [result.secure_url, result.public_id, sessionId]
       );
       console.log('✅ Session updated with Cloudinary URL and public_id');
+    } else {
+      console.warn('⚠️ No sessionId provided for video upload');
     }
 
-    res.json({ 
+    res.json({
       message: 'Video uploaded successfully',
       filename: result.secure_url,
       public_id: result.public_id,
@@ -65,10 +68,10 @@ router.post('/upload', upload.single('video'), async (req, res) => {
 
   } catch (error) {
     console.error('❌ Error uploading video:', error);
-    
-    res.status(500).json({ 
+
+    res.status(500).json({
       error: 'Failed to upload video',
-      details: error.message 
+      details: error.message
     });
   }
 });
@@ -77,16 +80,16 @@ router.post('/upload', upload.single('video'), async (req, res) => {
 router.get('/:public_id', async (req, res) => {
   try {
     const { public_id } = req.params;
-    
+
     // Tạo signed URL cho video
     const videoUrl = cloudinary.url(public_id, {
       resource_type: "video",
       type: "upload",
       expires_at: Math.floor(Date.now() / 1000) + 3600 // 1 hour expiry
     });
-    
+
     res.redirect(videoUrl);
-    
+
   } catch (error) {
     console.error('Error generating video URL:', error);
     res.status(500).json({ error: 'Failed to get video' });
@@ -113,28 +116,28 @@ router.get('/', async (req, res) => {
 router.delete('/:public_id', async (req, res) => {
   try {
     const { public_id } = req.params;
-    
+
     console.log(`🗑️ Deleting video from Cloudinary: ${public_id}`);
-    
+
     // 1. Xóa từ Cloudinary
     const cloudinaryResult = await cloudinary.uploader.destroy(public_id, {
       resource_type: 'video'
     });
-    
+
     console.log('✅ Cloudinary deletion result:', cloudinaryResult);
-    
+
     // 2. Cập nhật database: xóa video_filename và video_public_id
     await pool.query(
       'UPDATE sessions SET video_filename = NULL, video_public_id = NULL WHERE video_public_id = $1',
       [public_id]
     );
-    
+
     res.json({
       success: true,
       message: 'Video deleted successfully',
       cloudinary_result: cloudinaryResult
     });
-    
+
   } catch (error) {
     console.error('❌ Error deleting video:', error);
     res.status(500).json({
