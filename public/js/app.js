@@ -22,6 +22,9 @@ class FaceDetectionApp {
         this.handleCaptureClick = null;
         this.isCapturing = false;
 
+        // QUAN TRỌNG: Bind hàm handleCaptureClick để giữ đúng context
+        this.handleCaptureClick = this.handleCaptureClick.bind(this);
+
         // Thêm Set để theo dõi blob URLs
         this.blobUrls = new Set();
 
@@ -1196,9 +1199,9 @@ class FaceDetectionApp {
                 await this.stopTracking();
             },
             'captureImage': () => {
+                console.log('🎯 Capture button clicked via setupEventListeners');
                 this.handleCaptureClick();
             },
-
             'captureFromVideo': () => {
                 this.captureFromVideoPlayer();
             },
@@ -1240,23 +1243,22 @@ class FaceDetectionApp {
         this.eventListenersAttached = true; // Đánh dấu đã gắn listeners
     }
 
-    // Thêm vào class FaceDetectionApp
+    // Thêm vào class FaceDetectionApp, sau hàm initialize()
     handleCaptureClick() {
+        console.log('📸 Capture button clicked');
+
         // Kiểm tra biến cờ tránh chụp nhiều lần
         if (this.isCapturing) {
             console.log('⏳ Đang chụp ảnh, vui lòng đợi...');
             return;
         }
 
-        console.log('📸 Capture button clicked - checking conditions...');
-
-        // ĐIỀU KIỆN QUAN TRỌNG: Chỉ chụp khi đang theo dõi
+        // Kiểm tra điều kiện chụp
         if (!this.faceDetector?.isTrackingActive) {
             this.showNotification('⏸️ Vui lòng bắt đầu theo dõi (Start Tracking) trước khi chụp hình', 'warning');
             return;
         }
 
-        // Kiểm tra camera có bật không
         if (!this.faceDetector?.isCameraOn) {
             this.showNotification('📷 Vui lòng bật camera trước khi chụp hình', 'warning');
             return;
@@ -1264,10 +1266,11 @@ class FaceDetectionApp {
 
         // Đặt cờ đang chụp
         this.isCapturing = true;
+        console.log('✅ Starting capture process...');
 
         // Gọi hàm chụp ảnh
         this.captureFromCamera().finally(() => {
-            // Reset cờ sau khi chụp xong (dù thành công hay thất bại)
+            // Reset cờ sau khi chụp xong
             this.isCapturing = false;
             console.log('✅ Capture process completed, ready for next capture');
         });
@@ -1280,6 +1283,15 @@ class FaceDetectionApp {
                 this.showNotification('📷 Vui lòng bật camera trước khi chụp hình', 'warning');
                 return;
             }
+
+            if (!this.faceDetector.isTrackingActive) {
+                this.showNotification('⏸️ Vui lòng bắt đầu theo dõi trước khi chụp hình', 'warning');
+                return;
+            }
+
+            console.log('📱 Capturing from camera...');
+            console.log('🎯 Current sessionId:', this.faceDetector?.sessionId);
+            console.log('🎯 isTrackingActive:', this.faceDetector?.isTrackingActive);
 
             const canvas = document.getElementById('faceCanvas');
             if (!canvas) {
@@ -1333,6 +1345,12 @@ class FaceDetectionApp {
 
             // QUAN TRỌNG: Lấy sessionId hiện tại từ faceDetector
             const currentSessionId = this.faceDetector?.sessionId;
+
+            if (!currentSessionId) {
+                console.error('❌ ERROR: No sessionId during capture!');
+                this.showNotification('❌ Lỗi: Không tìm thấy session ID', 'error');
+                return;
+            }
             console.log('🎯 Current session ID for capture:', currentSessionId);
 
             // Tạo metadata với sessionId
@@ -1496,32 +1514,21 @@ class FaceDetectionApp {
         }
     }
 
-    // Phương thức xử lý click nút chụp
-    handleCaptureClick() {
-        console.log('📸 Capture button clicked');
-
-        // Kiểm tra đang ở chế độ nào
-        const videoPlayer = document.getElementById('playbackVideo');
-        const isVideoMode = videoPlayer && videoPlayer.style.display !== 'none';
-
-        console.log('Video mode:', isVideoMode);
-        console.log('Video playing:', videoPlayer?.paused === false);
-
-        if (isVideoMode) {
-            // Đang xem video
-            this.captureFromVideoPlayer();
-        } else {
-            // Đang xem camera live
-            this.captureFromCamera();
-        }
-    }
-
     async saveCapturedImage(blob, source = 'camera', metadata = {}) {
         try {
             const timestamp = new Date().getTime();
             const filename = `capture_${timestamp}.jpg`;
 
             console.log(`📤 Uploading captured image to Cloudinary: ${filename}`);
+            console.log('🔍 Metadata:', metadata);
+
+            const sessionId = metadata.sessionId;
+
+            if (!sessionId) {
+                console.error('❌ No sessionId in metadata!');
+                this.showNotification('❌ Lỗi: Không có session ID', 'error');
+                return null;
+            }
 
             // Tạo FormData
             const formData = new FormData();
