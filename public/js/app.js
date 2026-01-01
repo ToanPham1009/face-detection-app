@@ -1943,6 +1943,38 @@ class FaceDetectionApp {
         try {
             console.log('🎬 Starting tracking...');
 
+            // 1. Tạo sessionId mới
+            const sessionId = Date.now().toString();
+            this.faceDetector.sessionId = sessionId;
+            this.faceDetector.startTime = Date.now();
+
+            console.log('🆕 Created new sessionId:', sessionId);
+
+            // 2. Tạo session record trong database TRƯỚC
+            const initialSessionData = {
+                id: sessionId,
+                start_time: new Date().toISOString(),
+                end_time: new Date().toISOString(), // Tạm thời cùng start_time
+                total_faces: 0,
+                duration: 0,
+                video_filename: null,
+                video_public_id: null
+            };
+
+            console.log('💾 Creating initial session in database...');
+            const response = await fetch('/api/sessions', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(initialSessionData)
+            });
+
+            if (!response.ok) {
+                throw new Error('Failed to create session in database');
+            }
+
+            const sessionResult = await response.json();
+            console.log('✅ Initial session created in database:', sessionResult.id);
+
             // Reset UI
             document.getElementById('currentFaces').textContent = '0';
             document.getElementById('totalFaces').textContent = '0';
