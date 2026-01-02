@@ -28,9 +28,31 @@ const upload = multer({
 router.post('/upload', upload.single('image'), async (req, res) => {
   try {
     console.log('📸 Uploading capture image to Cloudinary...');
+    console.log('📦 Request body sessionId:', req.body.sessionId);
 
     if (!req.file) {
       return res.status(400).json({ error: 'No image file uploaded' });
+    }
+
+    // KIỂM TRA VÀ TẠO SESSION NẾU CHƯA CÓ
+    if (sessionId && sessionId !== 'null' && sessionId !== 'live') {
+      const sessionCheck = await pool.query(
+        'SELECT id FROM sessions WHERE id = $1',
+        [sessionId]
+      );
+
+      if (sessionCheck.rows.length === 0) {
+        console.log(`🆕 Session ${sessionId} not found, creating...`);
+
+        // Tạo session mới
+        await pool.query(
+          `INSERT INTO sessions (id, start_time, end_time, total_faces, duration) 
+                     VALUES ($1, $2, $3, $4, $5)`,
+          [sessionId, new Date().toISOString(), new Date().toISOString(), 0, 0]
+        );
+
+        console.log(`✅ Created missing session: ${sessionId}`);
+      }
     }
 
     const { source, timestamp, sessionId, videoTime, faceCount } = req.body;
@@ -49,11 +71,31 @@ router.post('/upload', upload.single('image'), async (req, res) => {
         public_id: publicId, // Đặt public_id có ý nghĩa
         overwrite: false // Không ghi đè nếu đã tồn tại
       });
-      
+
       console.log('✅ Image uploaded with custom public_id:', publicId);
 
     } catch (uploadError) {
       console.warn('⚠️ Cloudinary upload failed, using local fallback:', uploadError.message);
+
+      // Insert vào captures - sessionId đã được đảm bảo tồn tại
+      await pool.query(
+        `INSERT INTO captures (id, url, public_id, filename, session_id, source, video_time, face_count, created_at, is_local) 
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
+        [
+          captureData.id,
+          captureData.url,
+          captureData.public_id,
+          captureData.filename,
+          sessionId || null, // Có thể là null nếu không có sessionId
+          captureData.source,
+          captureData.video_time,
+          captureData.face_count,
+          captureData.created_at,
+          captureData.is_local
+        ]
+      );
+
+      console.log(`✅ Image saved with session_id: ${sessionId}`);
 
       // FALLBACK: Lưu cục bộ
       useLocalFallback = true;
@@ -125,6 +167,12 @@ router.post('/upload', upload.single('image'), async (req, res) => {
 
   } catch (error) {
     console.error('❌ Error uploading capture image:', error);
+    // Nếu là lỗi foreign key, gợi ý cụ thể
+    if (error.message.includes('foreign key constraint')) {
+      console.error('💡 FIX: Session does not exist in sessions table');
+      console.error('💡 Session ID causing issue:', req.body.sessionId);
+    }
+
     res.status(500).json({
       error: 'Failed to upload image',
       details: error.message
@@ -189,7 +237,7 @@ router.delete('/:publicId', async (req, res) => {
       const fs = require('fs');
       const path = require('path');
       const filePath = path.join(__dirname, '../../', captureUrl);
-      
+
       if (fs.existsSync(filePath)) {
         fs.unlinkSync(filePath);
         console.log('✅ Deleted local file:', filePath);

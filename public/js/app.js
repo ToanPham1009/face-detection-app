@@ -114,6 +114,15 @@ class FaceDetectionApp {
     // Phương thức chụp từ camera live
     async captureFromCamera() {
         try {
+            console.log('📱 Capturing from camera...');
+
+            // DEBUG: Kiểm tra kỹ sessionId
+            console.log('🔍 DEBUG - faceDetector state:', {
+                sessionId: this.faceDetector?.sessionId,
+                isTrackingActive: this.faceDetector?.isTrackingActive,
+                isCameraOn: this.faceDetector?.isCameraOn
+            });
+
             if (!this.faceDetector || !this.faceDetector.isCameraOn) {
                 this.showNotification('📷 Vui lòng bật camera trước khi chụp hình', 'warning');
                 return;
@@ -1554,7 +1563,6 @@ class FaceDetectionApp {
 
             // Lấy sessionId từ metadata
             const sessionId = metadata.sessionId;
-            console.log('🎯 SessionId for upload:', sessionId);
 
             if (!sessionId) {
                 console.error('❌ ERROR: No sessionId in metadata!');
@@ -1563,21 +1571,16 @@ class FaceDetectionApp {
                 return null;
             }
 
+            console.log('🎯 SessionId for upload:', sessionId);
+
             // Tạo FormData
             const formData = new FormData();
             formData.append('image', blob, filename);
             formData.append('source', source);
             formData.append('timestamp', timestamp.toString());
 
-            // TRUYỀN sessionId lên server
-            // Nếu có vấn đề foreign key, thử gửi 'null' thay vì sessionId
-            let sessionIdToSend = sessionId;
-
-            // DEBUG: Tạm thời gửi null để tránh lỗi foreign key
-            // sessionIdToSend = 'null'; // Bỏ comment nếu vẫn bị lỗi foreign key
-
-            formData.append('sessionId', sessionIdToSend.toString());
-            console.log('✅ SessionId added to formData:', sessionIdToSend);
+            formData.append('sessionId', sessionId);
+            console.log('✅ SessionId added to formData:', sessionId);
 
             if (metadata.faceCount) {
                 formData.append('faceCount', metadata.faceCount.toString());
@@ -2017,61 +2020,63 @@ class FaceDetectionApp {
 
             // 1. Tạo sessionId mới
             const sessionId = Date.now().toString();
+            console.log('🆕 Generated sessionId:', sessionId);
+
+            // 2. GÁN sessionId cho faceDetector TRƯỚC
             this.faceDetector.sessionId = sessionId;
             this.faceDetector.startTime = Date.now();
             this.faceDetector.isTrackingActive = true;
 
-            console.log('🆕 Created new sessionId:', sessionId);
+            // 3. TẠO SESSION TRONG DATABASE NGAY LẬP TỨC
+            console.log('💾 Creating session in database...');
+            const sessionData = {
+                id: sessionId,
+                start_time: new Date().toISOString(),
+                end_time: new Date().toISOString(), // Tạm thời
+                total_faces: 0,
+                duration: 0,
+                video_filename: null,
+                video_public_id: null
+            };
 
-            // 2. Tạo session record trong database TRƯỚC KHI chụp ảnh
-            try {
-                const initialSessionData = {
-                    id: sessionId,
-                    start_time: new Date().toISOString(),
-                    end_time: new Date().toISOString(), // Tạm thời
-                    total_faces: 0,
-                    duration: 0,
-                    video_filename: null,
-                    video_public_id: null
-                };
+            // Gọi API tạo session - DÙNG await ĐỂ ĐẢM BẢO HOÀN THÀNH
+            const response = await fetch('/api/sessions', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(sessionData)
+            });
 
-                console.log('💾 Creating initial session in database...');
-                const response = await fetch('/api/sessions', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(initialSessionData)
-                });
-
-                if (response.ok) {
-                    const sessionResult = await response.json();
-                    console.log('✅ Initial session created in database:', sessionResult.id);
-                } else {
-                    const errorText = await response.text();
-                    console.warn('⚠️ Failed to create initial session:', errorText);
-                    // Vẫn tiếp tục, session sẽ được tạo khi stopTracking
-                }
-            } catch (dbError) {
-                console.warn('⚠️ Could not create session in DB, continuing:', dbError.message);
+            if (response.ok) {
+                const result = await response.json();
+                console.log('✅ Session created in database:', result.id);
+            } else {
+                const errorText = await response.text();
+                console.error('❌ Failed to create session:', errorText);
+                // Vẫn tiếp tục, nhưng log cảnh báo
             }
 
-            // 3. Bắt đầu tracking trong faceDetector
+            // 4. Bắt đầu tracking trong faceDetector
             this.faceDetector.startTracking();
+            console.log('✅ Face detector tracking started');
 
-            // 4. Start video recording
+            // 5. Start video recording
             if (this.faceDetector.video) {
                 await this.videoManager.startRecording(this.faceDetector.video);
                 console.log('✅ Video recording started');
             }
 
-            // 5. Update UI
+            // 6. Update UI
             this.updateTrackingButtons(true);
 
-            console.log('✅ Tracking started successfully');
+            // 7. Show notification
+            this.showNotification('🎬 Đã bắt đầu theo dõi! Bạn có thể chụp ảnh bây giờ.', 'success');
+
+            console.log('✅ Tracking started successfully with sessionId:', sessionId);
 
         } catch (error) {
             console.error('❌ Error starting tracking:', error);
-            this.showNotification('❌ Lỗi khi bắt đầu thống kê', 'error');
-            // Reset nếu có lỗi
+            this.showNotification('❌ Lỗi khi bắt đầu thống kê: ' + error.message, 'error');
+            // Reset
             this.faceDetector.sessionId = null;
             this.faceDetector.isTrackingActive = false;
         }
