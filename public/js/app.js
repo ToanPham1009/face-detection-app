@@ -60,9 +60,6 @@ class FaceDetectionApp {
         // Khởi tạo FaceDetector
         this.faceDetector = new FaceDetector();
 
-        // QUAN TRỌNG: Bind hàm sau khi được định nghĩa
-        this.handleCaptureClick = this.handleCaptureClick.bind(this);
-
         //Thiết lập callbacks trực tiếp
         this.setupFaceDetectorCallbacks();
 
@@ -245,13 +242,30 @@ class FaceDetectionApp {
             },
             'captureImage': () => {
                 console.log('🎯 Capture button clicked (via setupEventListeners)');
-                if (this.handleCaptureClick && typeof this.handleCaptureClick === 'function') {
-                    this.handleCaptureClick();
-                } else {
-                    console.error('❌ handleCaptureClick is not a function!');
-                    // Fallback: gọi trực tiếp
-                    this.captureFromCamera();
+
+                // Kiểm tra điều kiện trực tiếp ở đây
+                if (this.isCapturing) {
+                    console.log('⏳ Đang chụp ảnh, vui lòng đợi...');
+                    return;
                 }
+
+                if (!this.faceDetector?.isTrackingActive) {
+                    this.showNotification('⏸️ Vui lòng bắt đầu theo dõi trước khi chụp hình', 'warning');
+                    return;
+                }
+
+                if (!this.faceDetector?.isCameraOn) {
+                    this.showNotification('📷 Vui lòng bật camera trước khi chụp hình', 'warning');
+                    return;
+                }
+
+                this.isCapturing = true;
+                console.log('✅ Starting capture process...');
+
+                this.captureFromCamera().finally(() => {
+                    this.isCapturing = false;
+                    console.log('✅ Capture process completed');
+                });
             },
             'captureFromVideo': () => {
                 this.captureFromVideoPlayer();
