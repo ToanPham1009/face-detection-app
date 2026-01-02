@@ -22,9 +22,6 @@ class FaceDetectionApp {
         this.handleCaptureClick = null;
         this.isCapturing = false;
 
-        // QUAN TRỌNG: Bind hàm handleCaptureClick để giữ đúng context
-        this.handleCaptureClick = this.handleCaptureClick.bind(this);
-
         // Thêm Set để theo dõi blob URLs
         this.blobUrls = new Set();
 
